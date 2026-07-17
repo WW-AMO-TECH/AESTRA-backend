@@ -20,9 +20,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'https://aestra-frontend.vercel.app',
-    ],
+    'allowed_origins' => ['https://aestra-frontend.vercel.app'],
 
     'allowed_origins_patterns' => [],
 
