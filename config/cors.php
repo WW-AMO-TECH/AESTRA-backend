@@ -26,8 +26,6 @@ return [
 
     'allowed_origins_patterns' => [],
 
-    'allowed_methods' => ['*'],
-
     'allowed_headers' => ['*'],
 
     'exposed_headers' => [],
