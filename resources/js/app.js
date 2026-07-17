@@ -10,5 +10,6 @@ const app = express();
 app.use(cors({
   origin: 'https://aestra-frontend.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
