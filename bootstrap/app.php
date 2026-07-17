@@ -6,7 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 // use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
-// use Illuminate\Http\Middleware\HandleCors;
+use Illuminate\Http\Middleware\HandleCors;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,7 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
 
-        $middleware->statefulApi();
+        $middleware->prepend(HandleCors::class);
 
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
