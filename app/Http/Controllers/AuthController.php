@@ -14,6 +14,12 @@ class AuthController extends Controller
      */
     public function signup(Request $request)
     {
+        \Log::info('Signup route reached');
+
+        return response()->json([
+            'test' => true
+        ]);
+
         $request->validate([
             'name' => 'required|string|min:2|max:30',
             'email' => 'required|email|unique:users',
