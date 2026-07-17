@@ -1,33 +1,46 @@
-FROM php:8.3-cli
+FROM php:8.3-fpm
 
-# Install system packages
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
-    unzip \
+    curl \
     zip \
-    libzip-dev \
+    unzip \
     libpng-dev \
+    libjpeg62-turbo-dev \
+    libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
-    curl \
-    && docker-php-ext-install pdo_mysql zip
+    libzip-dev \
+    nginx
+
+# Install PHP extensions
+RUN docker-php-ext-install \
+    pdo \
+    pdo_mysql \
+    mbstring \
+    zip \
+    exif \
+    pcntl \
+    bcmath
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-WORKDIR /app
+WORKDIR /var/www
 
-# Copy project
 COPY . .
 
-# Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Generate Laravel caches
-RUN php artisan config:clear || true
-RUN php artisan route:clear || true
-RUN php artisan view:clear || true
+RUN cp .env.example .env || true
 
-EXPOSE 8080
+RUN php artisan storage:link || true
 
-CMD php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
+RUN chown -R www-data:www-data storage bootstrap/cache
+
+COPY nginx.conf /etc/nginx/sites-enabled/default
+
+EXPOSE 80
+
+CMD service nginx start && php-fpm
