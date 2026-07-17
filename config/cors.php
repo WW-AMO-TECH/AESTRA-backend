@@ -20,7 +20,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://aestra-frontend.vercel.app'],
+    'allowed_origins' => [
+        'https://aestra-frontend.vercel.app',
+        'http://localhost:3000',
+        'http://localhost:5173',
+    ],
 
     'allowed_origins_patterns' => [],
 
