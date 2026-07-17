@@ -8,7 +8,7 @@ const app = express();
 // }));
 
 app.use(cors({
-  origin: 'https://aestra-frontend.vercel.app', // Replace with your actual Vercel URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: 'https://aestra-frontend.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
