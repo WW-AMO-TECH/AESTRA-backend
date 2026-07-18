@@ -15,18 +15,11 @@ return [
     |
     */
 
-    // 'paths' => ['api/*', 'products', 'categories', 'brands', 'sanctum/csrf-cookie'],
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'https://aestra-frontend.vercel.app',
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-    ],
-
-    'allowed_methods' => ['*'],
+    'allowed_origins' => ['https://aestra-frontend.vercel.app'],
 
     'allowed_origins_patterns' => [],
 

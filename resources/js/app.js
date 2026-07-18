@@ -1,5 +1,5 @@
-import './bootstrap';
+// import './bootstrap';
 
-app.use(cors({
-  origin: 'https://aestra-frontend.vercel.app'
-}));
+// app.use(cors({
+//   origin: 'https://aestra-frontend.vercel.app'
+// }));
