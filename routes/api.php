@@ -23,13 +23,7 @@ use App\Http\Controllers\Admin\PickupLocationController;
 use App\Http\Controllers\Admin\AnalyticsController;
 
 //  ---------------------- PUBLIC ROUTES ----------------------------------------------------------------------------------
-    Route::get('/env-test', function () {
-        return [
-            'APP_ENV' => env('APP_ENV'),
-            'APP_URL' => env('APP_URL'),
-            'FRONTEND_URL' => env('FRONTEND_URL'),
-        ];
-    });
+
     
     // USER AUTH ROUTES
     Route::post('/signup', [AuthController::class, 'signup']); // USER SIGNUP
