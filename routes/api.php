@@ -23,8 +23,10 @@ use App\Http\Controllers\Admin\PickupLocationController;
 use App\Http\Controllers\Admin\AnalyticsController;
 
 //  ---------------------- PUBLIC ROUTES ----------------------------------------------------------------------------------
+    Route::options('/{any}', function () {
+        return response('', 204);
+    })->where('any', '.*');
 
-    
     // USER AUTH ROUTES
     Route::post('/signup', [AuthController::class, 'signup']); // USER SIGNUP
     Route::post('/login', [AuthController::class, 'login']); // USER LOGIN
