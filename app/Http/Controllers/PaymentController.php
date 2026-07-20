@@ -148,7 +148,7 @@ class PaymentController extends Controller
             // TODO: Save order to DB here
             // Order::create([...])
 
-            return redirect("http://localhost:5173/payment-success?reference={$reference}");
+            return redirect("https://aestra-frontend.vercel.app/payment-success?reference={$reference}");
 
         } catch (\Throwable $e) {
             // LOG REAL ERROR (VERY IMPORTANT)
@@ -157,7 +157,7 @@ class PaymentController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return redirect('http://localhost:5173/payment-failed');
+            return redirect('https://aestra-frontend.vercel.app/payment-failed');
         }
     }
 
