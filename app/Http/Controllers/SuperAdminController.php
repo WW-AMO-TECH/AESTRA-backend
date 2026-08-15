@@ -48,18 +48,78 @@ class SuperAdminController extends Controller
     }
 
     // GET ALL USERS
-    public function users()
+    public function users(Request $request)
     {
-        
-        $users = User::where('role', 'user')
+        $query = User::where('role', 'user')
+            ->where('status', 'active');
+
+        // Search
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        // Statistics
+        $totalCustomers = User::where('role', 'user')
             ->where('status', 'active')
+            ->count();
+
+        $blockedCustomers = User::where('role', 'user')
+            ->where('status', 'active')
+            ->where('is_blocked', true)
+            ->count();
+
+        $activeCustomers = User::where('role', 'user')
+            ->where('status', 'active')
+            ->where('is_blocked', false)
+            ->count();
+
+        $newThisMonth = User::where('role', 'user')
+            ->where('status', 'active')
+            ->whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->count();
+
+        // Customers
+        $users = $query
+            ->withCount('orders')
+            ->withSum('orders', 'total')
+            ->latest()
+            ->paginate(8);
+
+        return response()->json([
+            'users' => $users,
+            'statistics' => [
+                'total' => $totalCustomers,
+                'active' => $activeCustomers,
+                'blocked' => $blockedCustomers,
+                'new_this_month' => $newThisMonth,
+            ],
+        ]);
+    }
+
+    public function userOrders($id)
+    {
+        $user = User::where('role', 'user')
+            ->findOrFail($id);
+
+        $orders = $user->orders()
+            ->with([
+                'items.product'
+            ])
             ->latest()
             ->get();
 
-        return response()->json($users);
+        return response()->json([
+            'user' => $user,
+            'orders' => $orders,
+        ]);
     }
-
-
     
     // BLOCK USER OR ADMIN
     public function blockUser($id)
@@ -69,7 +129,12 @@ class SuperAdminController extends Controller
         $user->is_blocked = true;
         $user->save();
 
-        return response()->json(['message' => 'User blocked']);
+        // Log the user out from all active sessions
+        $user->tokens()->delete();
+
+        return response()->json([
+            'message' => 'User blocked successfully'
+        ]);
     }
 
     // UNBLOCK USER OR ADMIN
@@ -80,6 +145,18 @@ class SuperAdminController extends Controller
         $user->is_blocked = false;
         $user->save();
 
-        return response()->json(['message' => 'User unblocked']);
+        return response()->json(['message' => 'User has been unblocked successfully']);
+    }
+
+    public function deleteUser($id)
+    {
+        $user = User::where('role', 'user')
+            ->findOrFail($id);
+
+        $user->delete();
+
+        return response()->json([
+            'message' => 'User deleted successfully'
+        ]);
     }
 }

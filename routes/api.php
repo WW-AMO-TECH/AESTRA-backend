@@ -40,6 +40,7 @@ use App\Http\Controllers\Admin\AnalyticsController;
     Route::get('/categories', [ProductController::class, 'categories']);
     Route::get('/brands', [ProductController::class, 'brands']);
     Route::get('/products/meta', [ProductController::class, 'meta']);
+    Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
     
     
     Route::get('/payments/callback', [PaymentController::class, 'callback']); // PAYMENT CALLBACK
@@ -76,17 +77,6 @@ use App\Http\Controllers\Admin\AnalyticsController;
         Route::get('/wishlist', [WishlistController::class, 'index']); // VIEW WISHLIST
         Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']); // REMOVE FROM WISHLIST
 
-        // ORDERS (USER)
-        // Route::get('/orders/{id}/confirmation', [
-        //     CheckoutController::class,
-        //     'confirmation'
-        // ]);
-
-        // REVIEWS (USER)
-        // Route::post('/reviews', [ReviewController::class, 'store']); // ADD REVIEW
-        // Route::put('/reviews/{id}', [ReviewController::class, 'update']); // UPDATE REVIEW
-        // Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']); // DELETE REVIEW
-
         // PICKUP LOCATIONS
         // COUNTRIES
         Route::get('/superadmin/countries', [CountryController::class, 'index']); // VIEW COUNTRIES
@@ -98,10 +88,16 @@ use App\Http\Controllers\Admin\AnalyticsController;
             '/superadmin/countries/{country}/states',
             [StateController::class, 'getByCountry']
         );
+
         // LOCATIONS
         Route::get('/superadmin/pickup-locations', [PickupLocationController::class, 'index']); // VIEW PICKUP LOCATIONS
         Route::get('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'show']); // VIEW SINGLE PICKUP LOCATION
         Route::get('/superadmin/states/{stateId}/locations', [PickupLocationController::class, 'getLocations']); // GET LOCATIONS BY STATE
+        
+        // REVIEWS
+        Route::post('/products/{productId}/reviews', [ReviewController::class, 'store']); // SUBMIT REVIEW
+        Route::put('/reviews/{reviewId}', [ReviewController::class, 'update']); // EDIT REVIEW
+        Route::delete('/reviews/{reviewId}', [ReviewController::class, 'destroy']); // DELETE REVIEW
     });
 //  ---------------------- ---------------------------------------------------------------- -------------------------------
 
@@ -140,9 +136,12 @@ use App\Http\Controllers\Admin\AnalyticsController;
         Route::delete('/admin/orders/{id}', [AdminOrderController::class, 'destroy']); // DELETE ORDER
 
         // REVIEWS
-        // Route::get('/admin/reviews', [ReviewController::class, 'index']); // VIEW ALL REVIEWS
-        // Route::put('/admin/reviews/{id}', [ReviewController::class, 'update']); // EDIT REVIEWS ADDED
-        // Route::delete('/admin/reviews/{id}', [ReviewController::class, 'destroy']); // DELETE REVIEWS ADDED
+        Route::get('admin/reviews', [ReviewController::class, 'adminIndex']); // GET ALL REVIEWS
+        Route::get('admin/reviews/{reviewId}', [ReviewController::class, 'adminShow']); // GET SINGLE REVIEW
+        Route::put('admin/reviews/{reviewId}', [ReviewController::class, 'adminUpdate']); // EDIT REVIEW
+        Route::patch('admin/reviews/{reviewId}/approve', [ReviewController::class, 'approve']); // APPROVE REVIEW
+        Route::patch('admin/reviews/{reviewId}/reject', [ReviewController::class, 'reject']); // REJECT REVIEW
+        Route::delete('admin/reviews/{reviewId}', [ReviewController::class, 'adminDestroy']); // DELETE REVIEW
 
     });
 //  ---------------------- ---------------------------------------------------------------- -------------------------------
@@ -167,6 +166,7 @@ use App\Http\Controllers\Admin\AnalyticsController;
         Route::post('/superadmin/user/block/{id}', [SuperAdminController::class, 'blockUser']); // BLOCK USER
         Route::post('/superadmin/user/unblock/{id}', [SuperAdminController::class, 'unblockUser']); // UNBLOCK USER
         Route::delete('/superadmin/users/{id}', [SuperAdminController::class, 'deleteUser']); // DELETE USER
+        Route::get('/superadmin/users/{id}/orders', [SuperAdminController::class, 'userOrders']); // GET ALL ORDERS OF A USER
 
         //PICKUP LOCATIONS
         // COUNTRIES

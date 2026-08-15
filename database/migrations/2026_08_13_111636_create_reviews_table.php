@@ -13,11 +13,29 @@ return new class extends Migration
     {
         Schema::create('reviews', function (Blueprint $table) {
             $table->id();
+
+            // Customer who wrote the review
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+
+            // Product being reviewed
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
-            $table->integer('rating');
-            $table->text('comment');
+
+            // Rating: 1 to 5 stars
+            $table->unsignedTinyInteger('rating');
+
+            // Review/comment
+            $table->text('review');
+
+            // Customer can edit only once
+            $table->unsignedTinyInteger('edit_count')->default(0);
+
+            // Admin moderation
+            $table->boolean('is_approved')->default(false);
+
             $table->timestamps();
+
+            // One customer can review a particular product only once
+            $table->unique(['user_id', 'product_id']);
         });
     }
 

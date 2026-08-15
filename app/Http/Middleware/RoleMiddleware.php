@@ -11,12 +11,8 @@ class RoleMiddleware
     /**
      * Handle an incoming request.
      */
-    public function handle(
-        Request $request,
-        Closure $next,
-        ...$roles
-    ): Response {
-
+    public function handle(Request $request, Closure $next, ...$roles): Response 
+    {
         $user = auth()->user();
 
         // USER NOT LOGGED IN

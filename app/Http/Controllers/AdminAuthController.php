@@ -37,7 +37,7 @@ class AdminAuthController extends Controller
         // blocked check
         if ($user->is_blocked) {
             return response()->json([
-                'message' => 'Account is blocked'
+                'message' => 'Account has been suspended. Please contact support.'
             ], 403);
         }
 

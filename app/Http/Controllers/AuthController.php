@@ -74,7 +74,7 @@ class AuthController extends Controller
 
         if ($user->is_blocked) {
             return response()->json([
-                'message' => 'Account is blocked'
+                'message' => 'Account has been suspended. Please contact support to resolve the issue.'
             ], 403);
         }
 

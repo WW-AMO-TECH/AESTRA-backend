@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Review;
 
 class Product extends Model
 {
@@ -97,8 +98,15 @@ class Product extends Model
         return $this->stock > 0;
     }
 
+    // Wishlist relationship
     public function wishlists()
     {
         return $this->hasMany(Wishlist::class);
+    }
+
+    // Reviews relationship
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
     }
 }

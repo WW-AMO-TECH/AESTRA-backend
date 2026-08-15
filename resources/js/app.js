@@ -1,5 +1,5 @@
 // import './bootstrap';
 
 // app.use(cors({
-//   origin: 'https://aestra-frontend.vercel.app'
+//   origin: 'http://localhost:5173'
 // }));

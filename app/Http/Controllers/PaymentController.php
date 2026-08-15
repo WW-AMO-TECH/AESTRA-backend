@@ -114,7 +114,7 @@ class PaymentController extends Controller
             $reference = $request->query('reference');
 
             if (!$reference) {
-                return redirect('http://localhost:5173/payment-failed');
+                return redirect('https://aestra-frontend.vercel.app/payment-failed');
             }
 
             // VERIFY PAYMENT
@@ -122,13 +122,13 @@ class PaymentController extends Controller
 
             // HARD SAFETY CHECK
             if (!isset($response['status']) || $response['status'] !== true) {
-                return redirect('http://localhost:5173/payment-failed');
+                return redirect('https://aestra-frontend.vercel.app/payment-failed');
             }
 
             $paymentData = $response['data'] ?? null;
 
             if (!$paymentData || $paymentData['status'] !== 'success') {
-                return redirect('http://localhost:5173/payment-failed');
+                return redirect('https://aestra-frontend.vercel.app/payment-failed');
             }
 
             $metadata = $paymentData['metadata'] ?? [];
