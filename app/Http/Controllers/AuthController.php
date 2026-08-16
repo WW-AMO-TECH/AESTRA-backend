@@ -50,41 +50,49 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email', // email OR phone
-            'password' => 'required'
+            'email' => 'required|email',
+            'password' => 'required|string',
         ]);
 
+        // Find the user by email
         $user = User::where('email', $request->email)->first();
 
+        // User does not have an account
         if (!$user) {
             return response()->json([
-                'message' => 'User not found'
+                'message' => 'No account found with this email. Please create an account first.'
             ], 404);
         }
 
+        // Only normal users can use this login
         if ($user->role !== 'user') {
-            return response()->json(['message' => 'Invalid user login'], 403);
+            return response()->json([
+                'message' => 'Invalid user login.'
+            ], 403);
         }
 
+        // Check password
         if (!Hash::check($request->password, $user->password)) {
             return response()->json([
-                'message' => 'Incorrect password'
+                'message' => 'Incorrect email or password.'
             ], 401);
         }
 
+        // Check if account is blocked
         if ($user->is_blocked) {
             return response()->json([
                 'message' => 'Account has been suspended. Please contact support to resolve the issue.'
             ], 403);
         }
 
+        // Create authentication token
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
             'user' => $user
-        ]);
+        ], 200);
     }
 
     /**

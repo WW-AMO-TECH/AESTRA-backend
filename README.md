@@ -127,7 +127,7 @@ ngrok config add-authtoken YOUR_AUTH_TOKEN
 
 Hosting frontend
 npm run dev
-It usually runs on: http://localhost:5173
+It usually runs on: https://aestra-frontend.vercel.app
 Now expose it by running this in frontend terminal:
 ngrok http 5173
 
