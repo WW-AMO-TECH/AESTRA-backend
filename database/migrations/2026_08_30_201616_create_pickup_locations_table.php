@@ -11,12 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('states', function (Blueprint $table) {
+        Schema::create('pickup_locations', function (Blueprint $table) {
             $table->id();
             $table->foreignId('country_id')
                 ->constrained()
                 ->cascadeOnDelete();
+            $table->foreignId('state_id')
+                ->constrained()
+                ->cascadeOnDelete();
             $table->string('name');
+            $table->text('address');
+            $table->string('phone')->nullable();
+            $table->time('opening_time');
+            $table->time('closing_time');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -27,6 +34,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('states');
+        Schema::dropIfExists('pickup_locations');
     }
 };

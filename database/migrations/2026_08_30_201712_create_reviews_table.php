@@ -11,12 +11,22 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('wishlists', function (Blueprint $table) {
+        Schema::create('reviews', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->unsignedTinyInteger('rating');
+            $table->text('review');
+            $table->unsignedTinyInteger('edit_count')->default(0);
+            $table->boolean('is_approved')->default(false);
+            $table->enum('status', [
+                'pending',
+                'approved',
+                'rejected'
+            ])->default('pending');
             $table->timestamps();
 
+            // One customer can review a particular product only once
             $table->unique(['user_id', 'product_id']);
         });
     }
@@ -26,6 +36,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('wishlists');
+        Schema::dropIfExists('reviews');
     }
 };
