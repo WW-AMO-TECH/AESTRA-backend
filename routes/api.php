@@ -14,6 +14,8 @@ use App\Http\Controllers\WishlistController;
 use App\Models\Category;
 use App\Models\Brand;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\BrandController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\Admin\ProductImportExportController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\SuperAdminController;
@@ -37,8 +39,10 @@ use App\Http\Controllers\Admin\AnalyticsController;
     // GET PRODUCTS
     Route::get('/products', [ProductController::class, 'index']);
     Route::get('/products/{id}', [ProductController::class, 'show']);
-    Route::get('/categories', [ProductController::class, 'categories']);
-    Route::get('/brands', [ProductController::class, 'brands']);
+    Route::get('/brands', [BrandController::class, 'index']);
+    Route::get('/brands/{id}', [BrandController::class, 'show']);
+    Route::get('/categories', [CategoryController::class, 'index']);
+    Route::get('/categories/{id}', [CategoryController::class, 'show']);
     Route::get('/products/meta', [ProductController::class, 'meta']);
     Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
     
@@ -108,25 +112,31 @@ use App\Http\Controllers\Admin\AnalyticsController;
         // ADMIN LOGOUT/ME (shared auth guard)
         Route::get('/admin/me', [AdminAuthController::class, 'me']); // ADMIN DETAILS
         Route::post('/admin/logout', [AdminAuthController::class, 'logout']); // ADMIN LOGOUT
-
-        // PRODUCTS
-        Route::get('/admin/products', [AdminProductController::class, 'index']); // VIEW PRODUCTS
-        Route::get('/admin/products/categories', function () {
-            return Category::all();
-        });
-        Route::get('/admin/products/brands', function () {
-            return Brand::all();
-        });
         
         // PRODUCT IMPORT/EXPORT
         Route::post('/admin/products/import', [ProductImportExportController::class, 'import']); // IMPORT PRODUCTS
         Route::get('/admin/products/export', [ProductImportExportController::class, 'export']); // EXPORT PRODUCTS
 
+        // PRODUCTS
+        Route::get('/admin/products', [AdminProductController::class, 'index']); // VIEW PRODUCTS
         Route::get('/admin/products/{id}', [AdminProductController::class, 'show']); // VIEW SINGLE PRODUCT
         Route::post('/admin/products', [AdminProductController::class, 'store']); // CREATE PRODUCT
-        Route::post('/admin/products/{id}/images', [AdminProductController::class, 'uploadImages']); // UPLOAD PRODUCT IMAGES
         Route::put('/admin/products/{id}', [AdminProductController::class, 'update']); // UPDATE PRODUCT
         Route::delete('/admin/products/{id}', [AdminProductController::class, 'destroy']); // DELETE PRODUCT
+
+        // PRODUCT IMAGES
+        Route::post('/admin/products/{id}/images', [AdminProductController::class, 'uploadImages']); // UPLOAD PRODUCT IMAGES
+        Route::delete('/admin/products/images/{image}', [AdminProductController::class, 'deleteImage']);
+        Route::put('/admin/products/images/{image}/primary', [AdminProductController::class, 'setPrimaryImage']);
+        Route::put('/admin/products/images/{image}/order', [AdminProductController::class, 'updateImageOrder']);
+
+        // VARIANTS
+        Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
+        Route::put('/admin/products/{product}/variants/{variant}', [AdminProductController::class, 'updateVariant']);
+        Route::delete('/admin/products/{product}/variants/{variant}', [AdminProductController::class, 'destroyVariant']);
+
+        // VARIANT IMAGES
+        Route::post('/admin/products/{product}/variants/{variant}/images', [AdminProductController::class, 'uploadVariantImages']);
 
         // ORDERS
         Route::get('/admin/orders', [AdminOrderController::class, 'index']); // VIEW ALL ORDERS
@@ -167,6 +177,17 @@ use App\Http\Controllers\Admin\AnalyticsController;
         Route::post('/superadmin/user/unblock/{id}', [SuperAdminController::class, 'unblockUser']); // UNBLOCK USER
         Route::delete('/superadmin/users/{id}', [SuperAdminController::class, 'deleteUser']); // DELETE USER
         Route::get('/superadmin/users/{id}/orders', [SuperAdminController::class, 'userOrders']); // GET ALL ORDERS OF A USER
+        
+        // BRANDS
+        Route::post('/superadmin/brands', [BrandController::class, 'store']);
+        Route::put('/superadmin/brands/{id}', [BrandController::class, 'update']);
+        Route::delete('/superadmin/brands/{id}', [BrandController::class, 'destroy']);
+        Route::put('/superadmin/brands/{id}/categories', [BrandController::class, 'updateCategories']);
+
+        // CATEGORIES
+        Route::post('/superadmin/categories', [CategoryController::class, 'store']);
+        Route::put('/superadmin/categories/{id}', [CategoryController::class, 'update']);
+        Route::delete('/superadmin/categories/{id}', [CategoryController::class, 'destroy']);
 
         //PICKUP LOCATIONS
         // COUNTRIES

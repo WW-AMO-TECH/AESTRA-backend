@@ -12,10 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('products', function (Blueprint $table) {
-
             $table->id();
-            // sku is a unique identifier for each product, used for inventory management and tracking.
-            // $table->string('sku')->unique();
             $table->string('name');
             $table->decimal('original_price', 10, 2)->nullable();
             $table->integer('discount_percentage')->default(0);
@@ -40,7 +37,6 @@ return new class extends Migration
             $table->boolean('is_flash_deal')->default(false);
             $table->text('description')->nullable();
             $table->timestamps();
-
         });
     }
 
