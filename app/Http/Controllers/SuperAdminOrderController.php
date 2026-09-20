@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Order;
 
-class AdminOrderController extends Controller
+class SuperAdminOrderController extends Controller
 {
     // Get all orders
     public function index()

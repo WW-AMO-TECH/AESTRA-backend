@@ -33,6 +33,9 @@ class ProductController extends Controller
                 'category',
                 'brand',
 
+                // Seller information
+                'seller:id,name,store_name,phone,email,avatar',
+
                 // Main product images
                 'images' => function ($query) {
                     $query->orderBy('sort_order');
@@ -54,10 +57,7 @@ class ProductController extends Controller
                 }
             ]);
 
-        /* -----------------------------
-        | NORMALIZE INPUTS
-        ------------------------------*/
-
+        /* NORMALIZE INPUTS */
         $search = trim($request->get('search', ''));
         $category = $request->get('category');
         $brand = $request->get('brand');
@@ -69,10 +69,7 @@ class ProductController extends Controller
 
         $perPage = $perPage > 48 ? 48 : $perPage;
 
-        /* -----------------------------
-        | SEARCH
-        ------------------------------*/
-
+        /* SEARCH */
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
@@ -82,42 +79,27 @@ class ProductController extends Controller
             });
         }
 
-        /* -----------------------------
-        | CATEGORY
-        ------------------------------*/
-
+        /* CATEGORY */
         if (!empty($category)) {
             $query->where('category_id', (int) $category);
         }
 
-        /* -----------------------------
-        | BRAND
-        ------------------------------*/
-
+        /* BRAND */
         if (!empty($brand)) {
             $query->where('brand_id', (int) $brand);
         }
 
-        /* -----------------------------
-        | GRADE
-        ------------------------------*/
-
+        /* GRADE */
         if (!empty($grade)) {
             $query->where('grade', $grade);
         }
 
-        /* -----------------------------
-        | CONDITION
-        ------------------------------*/
-
+        /* CONDITION */
         if (!empty($condition)) {
             $query->where('condition', $condition);
         }
 
-        /* -----------------------------
-        | FLASH DEALS
-        ------------------------------*/
-
+        /* FLASH DEALS */
         if ($request->has('is_flash_deal')) {
 
             $isFlashDeal = filter_var(
@@ -135,38 +117,24 @@ class ProductController extends Controller
             }
         }
 
-        /* -----------------------------
-        | ACTIVE PRODUCTS ONLY
-        ------------------------------*/
-
+        /* ACTIVE PRODUCTS ONLY */
         $query->where('status', true);
 
-        /* -----------------------------
-        | SORTING
-        ------------------------------*/
-
+        /* SORTING */
         match ($sort) {
-
             'price-asc' =>
                 $query->orderBy('price', 'asc'),
-
             'price-desc' =>
                 $query->orderBy('price', 'desc'),
-
             'rating' =>
                 $query->orderByDesc('rating'),
-
             'newest' =>
                 $query->orderByDesc('created_at'),
-
             default =>
                 $query->orderByDesc('created_at'),
         };
 
-        /* -----------------------------
-        | PAGINATION
-        ------------------------------*/
-
+        /* PAGINATION */
         $products = $query
             ->paginate($perPage)
             ->withQueryString();
@@ -225,6 +193,7 @@ class ProductController extends Controller
         return response()->json([
             'data' => [
                 'id' => $product->id,
+                'seller_id' => $product->seller_id,
                 'sku' => $product->sku,
                 'slug' => $product->slug,
                 'name' => $product->name,
@@ -264,6 +233,19 @@ class ProductController extends Controller
 
                 'reviews_count' => $product->reviews_count ?? 0,
 
+                'seller' => $product->seller
+                    ? [
+                        'id' => $product->seller->id,
+                        'name' => $product->seller->name,
+                        'store_name' => $product->seller->store_name,
+                        'phone' => $product->seller->phone,
+                        'email' => $product->seller->email,
+                        'avatar' => $product->seller->avatar
+                            ? asset($product->seller->avatar)
+                            : null,
+                    ]
+                    : null,
+
                 'brand' => $product->brand
                     ? [
                         'id' => $product->brand->id,
@@ -279,7 +261,6 @@ class ProductController extends Controller
                     : null,
 
                 /* MAIN PRODUCT IMAGES */
-
                 'images' => $product->images
                     ->map(function ($image) {
                         return [
@@ -295,7 +276,6 @@ class ProductController extends Controller
                     ->values(),
 
                 /* PRODUCT VARIANTS */
-
                 'variants' => $product->variants
                     ->map(function ($variant) {
                         return [

@@ -40,4 +40,16 @@ return [
         'secret' => env('PAYSTACK_SECRET_KEY'),
     ],
 
+    'google' => [
+    'client_id' => env('GOOGLE_CLIENT_ID'),
+    'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+    'redirect' => env('GOOGLE_USER_REDIRECT_URI'),
+    'user_redirect' => env('GOOGLE_USER_REDIRECT_URI'),
+    'seller_redirect' => env('GOOGLE_SELLER_REDIRECT_URI'),
+    ],
+
+    'frontend' => [
+        'url' => env('FRONTEND_URL'),
+    ],
+
 ];

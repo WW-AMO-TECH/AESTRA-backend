@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Seller;
 
+use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductImage;
 use Illuminate\Http\Request;
@@ -10,14 +11,16 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
-class AdminProductController extends Controller
+class SellerProductController extends Controller
 {
-    /* GET ALL PRODUCTS */
     public function index(Request $request)
     {
+        $sellerId = auth()->id();
         $query = Product::with([
             'category',
             'brand',
+
+            'seller:id,name,store_name,phone,email,avatar',
 
             'images' => function ($query) {
                 $query
@@ -32,7 +35,8 @@ class AdminProductController extends Controller
             'variants.images' => function ($query) {
                 $query->orderBy('sort_order');
             },
-        ]);
+        ])
+        ->where('seller_id', $sellerId);
 
         /* SEARCH */
         if ($request->filled('search')) {
@@ -48,22 +52,34 @@ class AdminProductController extends Controller
 
         /* CATEGORY */
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $query->where(
+                'category_id',
+                $request->category_id
+            );
         }
 
         /* BRAND */
         if ($request->filled('brand_id')) {
-            $query->where('brand_id', $request->brand_id);
+            $query->where(
+                'brand_id',
+                $request->brand_id
+            );
         }
 
         /* GRADE */
         if ($request->filled('grade')) {
-            $query->where('grade', $request->grade);
+            $query->where(
+                'grade',
+                $request->grade
+            );
         }
 
         /* CONDITION */
         if ($request->filled('condition')) {
-            $query->where('condition', $request->condition);
+            $query->where(
+                'condition',
+                $request->condition
+            );
         }
 
         /* STATUS */
@@ -134,17 +150,14 @@ class AdminProductController extends Controller
         ]);
     }
 
-
-    /**
-     * GET SINGLE PRODUCT
-     *
-     * GET /api/admin/products/{id}
-     */
+    /* GET SINGLE SELLER PRODUCT */
     public function show($id)
     {
         $product = Product::with([
             'category',
             'brand',
+
+            'seller:id,name,store_name,phone,email,avatar',
 
             'images' => function ($query) {
                 $query
@@ -160,30 +173,19 @@ class AdminProductController extends Controller
                 $query->orderBy('sort_order');
             },
 
-        ])->findOrFail($id);
+        ])
+        ->where('seller_id', auth()->id())
+        ->findOrFail($id);
 
         return response()->json([
             'data' => $product
         ]);
     }
 
-
-    /**
-     * CREATE PRODUCT
-     *
-     * Supports:
-     * - Product information
-     * - Multiple variants
-     * - Variant color
-     * - Variant storage
-     * - Variant RAM
-     * - Main product images
-     */
+    /* CREATE PRODUCT */
     public function store(Request $request)
     {
         $validated = $request->validate([
-
-            /* PRODUCT */
 
             'sku' => [
                 'nullable',
@@ -353,8 +355,6 @@ class AdminProductController extends Controller
                 'string'
             ],
 
-            /* PRODUCT IMAGES */
-
             'images' => [
                 'nullable',
                 'array'
@@ -365,8 +365,6 @@ class AdminProductController extends Controller
                 'mimes:jpg,jpeg,png,webp',
                 'max:2048'
             ],
-
-            /* VARIANTS */
 
             'variants' => [
                 'nullable',
@@ -447,16 +445,10 @@ class AdminProductController extends Controller
         try {
 
             /*
-             * CREATE PRODUCT
+             * Generate unique slug.
              */
-
             $slug = $validated['slug']
                 ?? Str::slug($validated['name']);
-
-            /*
-             * Make sure automatically generated slug
-             * is unique.
-             */
 
             $originalSlug = $slug;
             $counter = 1;
@@ -468,7 +460,15 @@ class AdminProductController extends Controller
                 $counter++;
             }
 
+            /*
+             * IMPORTANT:
+             *
+             * seller_id comes from auth()->id()
+             *
+             * NOT from the request.
+             */
             $product = Product::create([
+                'seller_id' => auth()->id(),
 
                 'sku' => $validated['sku'] ?? null,
 
@@ -482,8 +482,7 @@ class AdminProductController extends Controller
                 'discount_percentage' =>
                     $validated['discount_percentage'] ?? 0,
 
-                'price' =>
-                    $validated['price'],
+                'price' => $validated['price'],
 
                 'category_id' =>
                     $validated['category_id'],
@@ -558,10 +557,7 @@ class AdminProductController extends Controller
             /*
              * CREATE VARIANTS
              */
-
-            if (
-                !empty($validated['variants'])
-            ) {
+            if (!empty($validated['variants'])) {
 
                 foreach (
                     $validated['variants']
@@ -586,10 +582,12 @@ class AdminProductController extends Controller
                             $variantData['ram'] ?? null,
 
                         'original_price' =>
-                            $variantData['original_price'] ?? null,
+                            $variantData['original_price']
+                                ?? null,
 
                         'discount_percentage' =>
-                            $variantData['discount_percentage'] ?? 0,
+                            $variantData['discount_percentage']
+                                ?? 0,
 
                         'price' =>
                             $variantData['price'],
@@ -610,9 +608,8 @@ class AdminProductController extends Controller
 
 
             /*
-             * UPLOAD MAIN PRODUCT IMAGES
+             * UPLOAD PRODUCT IMAGES
              */
-
             if ($request->hasFile('images')) {
 
                 foreach (
@@ -627,7 +624,8 @@ class AdminProductController extends Controller
 
                     $product->images()->create([
 
-                        'variant_id' => null,
+                        'variant_id' =>
+                            null,
 
                         'image_url' =>
                             '/storage/' . $path,
@@ -643,10 +641,6 @@ class AdminProductController extends Controller
 
             DB::commit();
 
-            /*
-             * RETURN COMPLETE PRODUCT
-             */
-
             return response()->json([
 
                 'message' =>
@@ -654,11 +648,16 @@ class AdminProductController extends Controller
 
                 'data' =>
                     $product->load([
+
+                        'seller:id,name,store_name,phone,email,avatar',
+
                         'category',
+
                         'brand',
 
                         'images' => function ($query) {
-                            $query->whereNull('variant_id')
+                            $query
+                                ->whereNull('variant_id')
                                 ->orderBy('sort_order');
                         },
 
@@ -667,8 +666,8 @@ class AdminProductController extends Controller
                         'variants.images' => function ($query) {
                             $query->orderBy('sort_order');
                         },
-                    ]),
 
+                    ]),
             ], 201);
 
         } catch (\Throwable $e) {
@@ -687,15 +686,13 @@ class AdminProductController extends Controller
         }
     }
 
-
-    /**
-     * UPDATE PRODUCT
-     *
-     * PUT /api/admin/products/{id}
-     */
+    /* UPDATE SELLER PRODUCT */
     public function update(Request $request, $id)
     {
-        $product = Product::findOrFail($id);
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($id);
 
         $request->validate([
 
@@ -803,7 +800,11 @@ class AdminProductController extends Controller
                 'nullable|string',
         ]);
 
+        /*
+         * seller_id is intentionally NOT accepted here.
+         */
         $data = $request->only([
+
             'sku',
             'slug',
             'name',
@@ -833,11 +834,15 @@ class AdminProductController extends Controller
         ]);
 
         if ($request->has('is_flash_deal')) {
+
             $data['is_flash_deal'] =
-                $request->boolean('is_flash_deal');
+                $request->boolean(
+                    'is_flash_deal'
+                );
         }
 
         if ($request->has('status')) {
+
             $data['status'] =
                 $request->boolean('status');
         }
@@ -851,11 +856,16 @@ class AdminProductController extends Controller
 
             'data' =>
                 $product->load([
+
+                    'seller:id,name,store_name,phone,email,avatar',
+
                     'category',
+
                     'brand',
 
                     'images' => function ($query) {
-                        $query->whereNull('variant_id')
+                        $query
+                            ->whereNull('variant_id')
                             ->orderBy('sort_order');
                     },
 
@@ -864,36 +874,32 @@ class AdminProductController extends Controller
                     'variants.images' => function ($query) {
                         $query->orderBy('sort_order');
                     },
-                ]),
 
+                ]),
         ]);
     }
 
-
-    /**
-     * DELETE PRODUCT
-     *
-     * DELETE /api/admin/products/{id}
-     */
+    /* DELETE SELLER PRODUCT */
     public function destroy($id)
     {
         $product = Product::with([
             'images',
             'variants.images',
-        ])->findOrFail($id);
+        ])
+        ->where(
+            'seller_id',
+            auth()->id()
+        )
+        ->findOrFail($id);
 
         DB::beginTransaction();
 
         try {
 
             /*
-             * DELETE MAIN PRODUCT IMAGES
+             * Delete main product images.
              */
-
-            foreach (
-                $product->images
-                as $image
-            ) {
+            foreach ($product->images as $image) {
 
                 $this->deleteStoredImage(
                     $image->image_url
@@ -904,9 +910,8 @@ class AdminProductController extends Controller
 
 
             /*
-             * DELETE VARIANT IMAGES
+             * Delete variant images and variants.
              */
-
             foreach (
                 $product->variants
                 as $variant
@@ -928,17 +933,15 @@ class AdminProductController extends Controller
             }
 
 
-            /*
-             * DELETE PRODUCT
-             */
-
             $product->delete();
 
             DB::commit();
 
             return response()->json([
+
                 'message' =>
-                    'Product deleted successfully'
+                    'Product deleted successfully',
+
             ]);
 
         } catch (\Throwable $e) {
@@ -958,18 +961,17 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * CREATE VARIANT
-     *
-     * POST /api/admin/products/{product}/variants
-     */
+    /* CREATE VARIANT */
     public function storeVariant(
         Request $request,
         $productId
     ) {
 
-        $product =
-            Product::findOrFail($productId);
+        /* IMPORTANT: Product must belong to this seller. */
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($productId);
 
         $validated = $request->validate([
 
@@ -1011,44 +1013,43 @@ class AdminProductController extends Controller
                 'nullable|boolean',
         ]);
 
-        $variant =
-            $product->variants()->create([
+        $variant = $product->variants()->create([
 
-                'sku' =>
-                    $validated['sku'],
+            'sku' =>
+                $validated['sku'],
 
-                'name' =>
-                    $validated['name'] ?? null,
+            'name' =>
+                $validated['name'] ?? null,
 
-                'color' =>
-                    $validated['color'] ?? null,
+            'color' =>
+                $validated['color'] ?? null,
 
-                'storage' =>
-                    $validated['storage'] ?? null,
+            'storage' =>
+                $validated['storage'] ?? null,
 
-                'ram' =>
-                    $validated['ram'] ?? null,
+            'ram' =>
+                $validated['ram'] ?? null,
 
-                'original_price' =>
-                    $validated['original_price'] ?? null,
+            'original_price' =>
+                $validated['original_price'] ?? null,
 
-                'discount_percentage' =>
-                    $validated['discount_percentage'] ?? 0,
+            'discount_percentage' =>
+                $validated['discount_percentage'] ?? 0,
 
-                'price' =>
-                    $validated['price'],
+            'price' =>
+                $validated['price'],
 
-                'stock' =>
-                    $validated['stock'],
+            'stock' =>
+                $validated['stock'],
 
-                'weight' =>
-                    $validated['weight'] ?? null,
+            'weight' =>
+                $validated['weight'] ?? null,
 
-                'status' =>
-                    $request->has('status')
-                        ? $request->boolean('status')
-                        : true,
-            ]);
+            'status' =>
+                $request->has('status')
+                    ? $request->boolean('status')
+                    : true,
+        ]);
 
         return response()->json([
 
@@ -1066,24 +1067,21 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * UPDATE VARIANT
-     *
-     * PUT /api/admin/products/{product}/variants/{variant}
-     */
+    /* UPDATE VARIANT */
     public function updateVariant(
         Request $request,
         $productId,
         $variantId
     ) {
 
-        $product =
-            Product::findOrFail($productId);
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($productId);
 
-        $variant =
-            $product->variants()
-                ->where('id', $variantId)
-                ->firstOrFail();
+        $variant = $product->variants()
+            ->where('id', $variantId)
+            ->firstOrFail();
 
         $request->validate([
 
@@ -1129,6 +1127,7 @@ class AdminProductController extends Controller
         ]);
 
         $data = $request->only([
+
             'sku',
             'name',
             'color',
@@ -1139,9 +1138,11 @@ class AdminProductController extends Controller
             'price',
             'stock',
             'weight',
+
         ]);
 
         if ($request->has('status')) {
+
             $data['status'] =
                 $request->boolean('status');
         }
@@ -1164,24 +1165,21 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * DELETE VARIANT
-     *
-     * DELETE /api/admin/products/{product}/variants/{variant}
-     */
+    /* DELETE VARIANT */
     public function destroyVariant(
         $productId,
         $variantId
     ) {
 
-        $product =
-            Product::findOrFail($productId);
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($productId);
 
-        $variant =
-            $product->variants()
-                ->with('images')
-                ->where('id', $variantId)
-                ->firstOrFail();
+        $variant = $product->variants()
+            ->with('images')
+            ->where('id', $variantId)
+            ->firstOrFail();
 
         DB::beginTransaction();
 
@@ -1204,8 +1202,10 @@ class AdminProductController extends Controller
             DB::commit();
 
             return response()->json([
+
                 'message' =>
-                    'Variant deleted successfully'
+                    'Variant deleted successfully',
+
             ]);
 
         } catch (\Throwable $e) {
@@ -1225,11 +1225,7 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * UPLOAD MAIN PRODUCT IMAGES
-     *
-     * POST /api/admin/products/{id}/images
-     */
+    /* UPLOAD MAIN PRODUCT IMAGES */
     public function uploadImages(
         Request $request,
         $productId
@@ -1260,8 +1256,11 @@ class AdminProductController extends Controller
                 'nullable|integer|min:0',
         ]);
 
-        $product =
-            Product::findOrFail($productId);
+        /* Make sure the product belongs to the authenticated seller. */
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($productId);
 
         $uploadedImages = [];
 
@@ -1273,17 +1272,15 @@ class AdminProductController extends Controller
             as $index => $image
         ) {
 
-            $path =
-                $image->store(
-                    'products',
-                    'public'
-                );
+            $path = $image->store(
+                'products',
+                'public'
+            );
 
-            $sortOrder =
-                $request->input(
-                    "sort_order.$index",
-                    $index
-                );
+            $sortOrder = $request->input(
+                "sort_order.$index",
+                $index
+            );
 
             $uploadedImage =
                 ProductImage::create([
@@ -1322,11 +1319,7 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * UPLOAD VARIANT IMAGES
-     *
-     * POST /api/admin/products/{product}/variants/{variant}/images
-     */
+    /* UPLOAD VARIANT IMAGES */
     public function uploadVariantImages(
         Request $request,
         $productId,
@@ -1358,13 +1351,21 @@ class AdminProductController extends Controller
                 'nullable|integer|min:0',
         ]);
 
-        $product =
-            Product::findOrFail($productId);
+        /*
+         * Verify product ownership first.
+         */
+        $product = Product::where(
+            'seller_id',
+            auth()->id()
+        )->findOrFail($productId);
 
-        $variant =
-            $product->variants()
-                ->where('id', $variantId)
-                ->firstOrFail();
+        /*
+         * Verify variant belongs to
+         * this seller's product.
+         */
+        $variant = $product->variants()
+            ->where('id', $variantId)
+            ->firstOrFail();
 
         $uploadedImages = [];
 
@@ -1376,17 +1377,15 @@ class AdminProductController extends Controller
             as $index => $image
         ) {
 
-            $path =
-                $image->store(
-                    'products/variants',
-                    'public'
-                );
+            $path = $image->store(
+                'products/variants',
+                'public'
+            );
 
-            $sortOrder =
-                $request->input(
-                    "sort_order.$index",
-                    $index
-                );
+            $sortOrder = $request->input(
+                "sort_order.$index",
+                $index
+            );
 
             $uploadedImage =
                 ProductImage::create([
@@ -1425,15 +1424,22 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * DELETE IMAGE
-     *
-     * DELETE /api/admin/products/images/{image}
-     */
+    /* DELETE IMAGE */
     public function destroyImage($imageId)
     {
-        $image =
-            ProductImage::findOrFail($imageId);
+        /*
+         * Only allow deletion if the image
+         * belongs to one of this seller's products.
+         */
+        $image = ProductImage::whereHas(
+            'product',
+            function ($query) {
+                $query->where(
+                    'seller_id',
+                    auth()->id()
+                );
+            }
+        )->findOrFail($imageId);
 
         $this->deleteStoredImage(
             $image->image_url
@@ -1442,25 +1448,29 @@ class AdminProductController extends Controller
         $image->delete();
 
         return response()->json([
+
             'message' =>
-                'Image deleted successfully'
+                'Image deleted successfully',
+
         ]);
     }
 
 
-    /**
-     * SET PRIMARY IMAGE
-     *
-     * POST /api/admin/products/images/{image}/primary
-     */
+    /* SET PRIMARY IMAGE */
     public function setPrimaryImage($imageId)
     {
-        $image =
-            ProductImage::findOrFail($imageId);
-
         /*
-         * VARIANT IMAGE
+         * Verify ownership.
          */
+        $image = ProductImage::whereHas(
+            'product',
+            function ($query) {
+                $query->where(
+                    'seller_id',
+                    auth()->id()
+                );
+            }
+        )->findOrFail($imageId);
 
         if ($image->variant_id) {
 
@@ -1473,18 +1483,14 @@ class AdminProductController extends Controller
 
         } else {
 
-            /*
-             * MAIN PRODUCT IMAGE
-             */
-
             ProductImage::where(
                 'product_id',
                 $image->product_id
             )
-                ->whereNull('variant_id')
-                ->update([
-                    'is_primary' => false
-                ]);
+            ->whereNull('variant_id')
+            ->update([
+                'is_primary' => false
+            ]);
         }
 
         $image->update([
@@ -1503,27 +1509,37 @@ class AdminProductController extends Controller
     }
 
 
-    /**
-     * UPDATE IMAGE ORDER
-     *
-     * PUT /api/admin/products/images/{image}/order
-     */
+    /* UPDATE IMAGE ORDER */
     public function updateImageOrder(
         Request $request,
         $imageId
     ) {
 
         $request->validate([
+
             'sort_order' =>
                 'required|integer|min:0',
+
         ]);
 
-        $image =
-            ProductImage::findOrFail($imageId);
+        /*
+         * Verify ownership.
+         */
+        $image = ProductImage::whereHas(
+            'product',
+            function ($query) {
+                $query->where(
+                    'seller_id',
+                    auth()->id()
+                );
+            }
+        )->findOrFail($imageId);
 
         $image->update([
+
             'sort_order' =>
-                $request->sort_order
+                $request->sort_order,
+
         ]);
 
         return response()->json([
@@ -1547,22 +1563,14 @@ class AdminProductController extends Controller
             return;
         }
 
-        /*
-         * Example:
-         *
-         * /storage/products/abc.jpg
-         *
-         * becomes:
-         *
-         * products/abc.jpg
-         */
-
         $path = str_replace(
             '/storage/',
             '',
             $imageUrl
         );
 
-        Storage::disk('public')->delete($path);
+        Storage::disk('public')->delete(
+            $path
+        );
     }
 }

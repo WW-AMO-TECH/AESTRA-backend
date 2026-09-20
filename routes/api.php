@@ -3,155 +3,164 @@
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\SellerAuthController;
+use App\Http\Controllers\SellerVerificationController;
+use App\Http\Controllers\SuperAdminSellerController;
+use App\Http\Controllers\Seller\SellerProductController;
+use App\Http\Controllers\SuperAdminProductController;
 use App\Http\Controllers\CartController;
-use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\AdminOrderController;
+use App\Http\Controllers\SuperAdminOrderController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\WishlistController;
-use App\Models\Category;
-use App\Models\Brand;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\Admin\ProductImportExportController;
-use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\Admin\CountryController;
 use App\Http\Controllers\Admin\StateController;
 use App\Http\Controllers\Admin\PickupLocationController;
 use App\Http\Controllers\Admin\AnalyticsController;
 
-//  ---------------------- PUBLIC ROUTES ----------------------------------------------------------------------------------
-    
-    // USER AUTH ROUTES
-    Route::post('/signup', [AuthController::class, 'signup']); // USER SIGNUP
-    Route::post('/login', [AuthController::class, 'login']); // USER LOGIN
 
-    // ADMIN SIGNUP REQUEST
-    Route::post('/admin/signup-request', [AdminAuthController::class, 'signupRequest']); // ADMIN SIGNUP REQUEST
+// ================================================================
+// PUBLIC ROUTES
+// ================================================================
 
-    // ADMIN + SUPER ADMIN LOGIN AUTH ROUTES
-    Route::post('/admin/login', [AdminAuthController::class, 'login']); // ADMIN LOGIN
+// ---------------- USER AUTH ----------------
+Route::post('/signup', [AuthController::class, 'signup']);
+Route::post('/login', [AuthController::class, 'login']);
 
-    // GET PRODUCTS
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::get('/products/{id}', [ProductController::class, 'show']);
-    Route::get('/brands', [BrandController::class, 'index']);
-    Route::get('/brands/{id}', [BrandController::class, 'show']);
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::get('/categories/{id}', [CategoryController::class, 'show']);
-    Route::get('/products/meta', [ProductController::class, 'meta']);
-    Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
-    
-    
-    Route::get('/payments/callback', [PaymentController::class, 'callback']); // PAYMENT CALLBACK
-    // PAYMENT ROUTES
-//  ---------------------- ---------------------------------------------------------------- -------------------------------
+// ---------------- SELLER AUTH ----------------
+Route::post('/seller/signup', [SellerAuthController::class, 'signup']);
+Route::post('/seller/login', [SellerAuthController::class, 'login']);
+
+// ---------------- SUPER ADMIN AUTH ----------------
+Route::post('/superadmin/signup', [SuperAdminController::class, 'signup']);
+Route::post('/superadmin/login', [SuperAdminController::class, 'login']);
+
+// ---------------- PUBLIC PRODUCTS ---------------
+Route::get('/products/meta', [ProductController::class, 'meta']);
+Route::get('/products', [ProductController::class, 'index']);
+Route::get('/products/{id}', [ProductController::class, 'show']);
+
+// ---------------- PUBLIC BRANDS ----------------
+Route::get('/brands', [BrandController::class, 'index']);
+Route::get('/brands/{id}', [BrandController::class, 'show']);
+
+// ---------------- PUBLIC CATEGORIES ----------------
+Route::get('/categories', [CategoryController::class, 'index']);
+Route::get('/categories/{id}', [CategoryController::class, 'show']);
+
+// ---------------- PUBLIC REVIEWS ----------------
+Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
+
+// ---------------- PAYSTACK CALLBACK ---------------
+Route::get('/payments/callback', [PaymentController::class, 'callback']);
+
+// ---------------- PAYSTACK WEBHOOK ----------------
+// Paystack needs to reach this without Sanctum authentication.
+
+Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
 
 
-//  ----------------- USER PROTECTED ROUTES -------------------------------------------------------------------------------
+// ================ AUTHENTICATED USER ROUTES ================
     Route::middleware(['auth:sanctum'])->group(function () {
 
-        // USER AUTH
-        Route::get('/user/me', [AuthController::class, 'me']); // USER DETAILS
-        Route::post('/user/logout', [AuthController::class, 'logout']); // USER LOGOUT
+        // ---------------- USER AUTH ----------------
+        Route::get('/user/me', [AuthController::class, 'me']);
+        Route::post('/logout', [AuthController::class, 'logout']);
 
-        // CART
-        Route::post('/cart', [CartController::class, 'store']); // ADD TO CART
-        Route::get('/cart', [CartController::class, 'index']); // VIEW CART
-        Route::put('/cart/{id}', [CartController::class, 'update']); // UPDATE CART ITEM
-        Route::delete('/cart/{id}', [CartController::class, 'destroy']); // REMOVE FROM CART
-        Route::delete('/cart/clear', [CartController::class, 'clear']); // CLEAR CART
+        // ---------------- CART ----------------
+        Route::post('/cart', [CartController::class, 'store']);
+        Route::get('/cart', [CartController::class, 'index']);
+        Route::put('/cart/{id}', [CartController::class, 'update']);
+        Route::delete('/cart/{id}', [CartController::class, 'destroy']);
+        Route::delete('/cart/clear', [CartController::class, 'clear']);
 
-        // CHECKOUT & PAYMENTS
-        Route::post('/payments/initiate', [PaymentController::class, 'initialize']); // INITIATE PAYMENT
-        // Payment verification (Paystack callback/webhook)
-        Route::get('/payments/verify', [PaymentController::class, 'verifyPayment']); // VERIFY PAYMENT (ALTERNATIVE TO CALLBACK)
-        Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']); // PAYSTACK WEBHOOK
-
-        // ORDERS
-        Route::get('/orders', [OrderController::class, 'index']); // user orders
-        Route::get('/orders/{id}', [OrderController::class, 'show']); // single order
-
-        // WISHLIST
-        Route::post('/wishlist/{productId}', [WishlistController::class, 'store']); // ADD TO WISHLIST
-        Route::get('/wishlist', [WishlistController::class, 'index']); // VIEW WISHLIST
-        Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']); // REMOVE FROM WISHLIST
-
-        // PICKUP LOCATIONS
+        // ---------------- PICKUP LOCATIONS ----------------
         // COUNTRIES
         Route::get('/superadmin/countries', [CountryController::class, 'index']); // VIEW COUNTRIES
         Route::get('/superadmin/countries/{id}', [CountryController::class, 'show']); // VIEW SINGLE COUNTRY
+
         // STATES
         Route::get('/superadmin/states', [StateController::class, 'index']); // VIEW STATES
         Route::get('/superadmin/states/{id}', [StateController::class, 'show']); // VIEW SINGLE STATE
-        Route::get(
-            '/superadmin/countries/{country}/states',
-            [StateController::class, 'getByCountry']
-        );
+        Route::get('/superadmin/countries/{country}/states', [StateController::class, 'getByCountry']);
 
         // LOCATIONS
         Route::get('/superadmin/pickup-locations', [PickupLocationController::class, 'index']); // VIEW PICKUP LOCATIONS
         Route::get('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'show']); // VIEW SINGLE PICKUP LOCATION
         Route::get('/superadmin/states/{stateId}/locations', [PickupLocationController::class, 'getLocations']); // GET LOCATIONS BY STATE
-        
-        // REVIEWS
-        Route::post('/products/{productId}/reviews', [ReviewController::class, 'store']); // SUBMIT REVIEW
-        Route::put('/reviews/{reviewId}', [ReviewController::class, 'update']); // EDIT REVIEW
-        Route::delete('/reviews/{reviewId}', [ReviewController::class, 'destroy']); // DELETE REVIEW
-    });
-//  ---------------------- ---------------------------------------------------------------- -------------------------------
 
+        // ---------------- PAYMENTS ----------------
+        Route::post('/payments/initiate', [PaymentController::class, 'initialize']);
+        Route::get('/payments/verify', [PaymentController::class, 'verifyPayment']);
+        Route::post('/payments/bank-transfer', [PaymentController::class, 'submitBankTransfer']);
+
+        // ---------------- CUSTOMER ORDERS ----------------
+        Route::get('/orders', [OrderController::class, 'index']);
+        Route::get('/orders/{id}', [OrderController::class, 'show']);
+
+        // ---------------- WISHLIST ----------------
+        Route::post('/wishlist/{productId}', [WishlistController::class, 'store']);
+        Route::get('/wishlist', [WishlistController::class, 'index']);
+        Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']);
+
+        // ---------------- REVIEWS ----------------
+        Route::post('/products/{productId}/reviews', [ReviewController::class, 'store']);
+        Route::put('/reviews/{reviewId}', [ReviewController::class, 'update']);
+        Route::delete('/reviews/{reviewId}', [ReviewController::class, 'destroy']);
+    });
+//  ---------------------- -----------------------
+
+// ================ SELLER ROUTES ================
+    Route::middleware(['auth:sanctum', 'role:seller'])->group(function () {
+
+        // ---------------- SELLER PROFILE ----------------
+        Route::get('/seller/me', [SellerAuthController::class, 'me']);
+
+        // ---------------- SELLER VERIFICATION ----------------
+        Route::get('/verification', [SellerVerificationController::class, 'show']);
+        Route::post('/verification', [SellerVerificationController::class, 'submit']);
+
+        // ---------------- SELLER PRODUCTS ----------------
+        Route::get('/seller/products', [SellerProductController::class, 'index']);
+        Route::get('/seller/products/{id}', [SellerProductController::class, 'show']);
+        Route::post('/seller/products', [SellerProductController::class, 'store']);
+        Route::put('/seller/products/{id}', [SellerProductController::class, 'update']);
+        Route::patch('/seller/products/{id}', [SellerProductController::class, 'update']);
+        Route::delete('/seller/products/{id}', [SellerProductController::class, 'destroy']);
+        
+        // Product images
+        Route::post('/seller/products/{id}/images', [SellerProductController::class, 'uploadImages']);
+        Route::delete('/seller/products/images/{image}', [SellerProductController::class, 'deleteImage']);
+        Route::put( '/seller/products/images/{image}/primary', [SellerProductController::class, 'setPrimaryImage'] ); // SET PRIMARY IMAGE
+        Route::put( '/seller/products/images/{image}/order', [SellerProductController::class, 'updateImageOrder'] ); // UPDATE IMAGE ORDER
+
+        // Variants
+        Route::post('/seller/products/{product}/variants', [SellerProductController::class, 'storeVariant']);
+        Route::put('/seller/products/{product}/variants/{variant}', [SellerProductController::class, 'updateVariant']);
+        Route::patch('/seller/products/{product}/variants/{variant}', [SellerProductController::class, 'updateVariant']);
+        Route::delete('/seller/products/{product}/variants/{variant}', [SellerProductController::class, 'destroyVariant']);
+        
+        // ================ VARIANT IMAGES =================
+        Route::post( '/seller/products/{product}/variants/{variant}/images', [SellerProductController::class, 'uploadVariantImages'] ); // UPLOAD VARIANT IMAGES
+
+        // ================ PRODUCT IMPORT / EXPORT ==================
+        Route::post('/seller/products/import', [ProductImportExportController::class, 'import']);
+        Route::get('/seller/products/export', [ProductImportExportController::class, 'export']);
+    });
+//  ---------------------- -----------------------
 
 //  ---------------- ADMIN + SUPER ADMIN ROUTES ---------------------------------------------------------------------------
-    Route::middleware(['auth:sanctum','role:admin,super_admin'])->group(function () {
-
-        // ADMIN LOGOUT/ME (shared auth guard)
-        Route::get('/admin/me', [AdminAuthController::class, 'me']); // ADMIN DETAILS
-        Route::post('/admin/logout', [AdminAuthController::class, 'logout']); // ADMIN LOGOUT
+    Route::middleware(['auth:sanctum','role:seller,super_admin'])->group(function () {
         
         // PRODUCT IMPORT/EXPORT
         Route::post('/admin/products/import', [ProductImportExportController::class, 'import']); // IMPORT PRODUCTS
         Route::get('/admin/products/export', [ProductImportExportController::class, 'export']); // EXPORT PRODUCTS
-
-        // PRODUCTS
-        Route::get('/admin/products', [AdminProductController::class, 'index']); // VIEW PRODUCTS
-        Route::get('/admin/products/{id}', [AdminProductController::class, 'show']); // VIEW SINGLE PRODUCT
-        Route::post('/admin/products', [AdminProductController::class, 'store']); // CREATE PRODUCT
-        Route::put('/admin/products/{id}', [AdminProductController::class, 'update']); // UPDATE PRODUCT
-        Route::delete('/admin/products/{id}', [AdminProductController::class, 'destroy']); // DELETE PRODUCT
-
-        // PRODUCT IMAGES
-        Route::post('/admin/products/{id}/images', [AdminProductController::class, 'uploadImages']); // UPLOAD PRODUCT IMAGES
-        Route::delete('/admin/products/images/{image}', [AdminProductController::class, 'deleteImage']);
-        Route::put('/admin/products/images/{image}/primary', [AdminProductController::class, 'setPrimaryImage']);
-        Route::put('/admin/products/images/{image}/order', [AdminProductController::class, 'updateImageOrder']);
-
-        // VARIANTS
-        Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
-        Route::put('/admin/products/{product}/variants/{variant}', [AdminProductController::class, 'updateVariant']);
-        Route::delete('/admin/products/{product}/variants/{variant}', [AdminProductController::class, 'destroyVariant']);
-
-        // VARIANT IMAGES
-        Route::post('/admin/products/{product}/variants/{variant}/images', [AdminProductController::class, 'uploadVariantImages']);
-
-        // ORDERS
-        Route::get('/admin/orders', [AdminOrderController::class, 'index']); // VIEW ALL ORDERS
-        Route::get('/admin/orders/{id}', [AdminOrderController::class, 'show']); // VIEW SINGLE ORDER
-        Route::put('/admin/orders/{id}', [AdminOrderController::class, 'update']); // UPDATE ORDER
-        Route::patch('/admin/orders/{id}/status', [AdminOrderController::class, 'updateStatus']);
-        Route::delete('/admin/orders/{id}', [AdminOrderController::class, 'destroy']); // DELETE ORDER
-
-        // REVIEWS
-        Route::get('admin/reviews', [ReviewController::class, 'adminIndex']); // GET ALL REVIEWS
-        Route::get('admin/reviews/{reviewId}', [ReviewController::class, 'adminShow']); // GET SINGLE REVIEW
-        Route::put('admin/reviews/{reviewId}', [ReviewController::class, 'adminUpdate']); // EDIT REVIEW
-        Route::patch('admin/reviews/{reviewId}/approve', [ReviewController::class, 'approve']); // APPROVE REVIEW
-        Route::patch('admin/reviews/{reviewId}/reject', [ReviewController::class, 'reject']); // REJECT REVIEW
-        Route::delete('admin/reviews/{reviewId}', [ReviewController::class, 'adminDestroy']); // DELETE REVIEW
 
     });
 //  ---------------------- ---------------------------------------------------------------- -------------------------------
@@ -160,16 +169,41 @@ use App\Http\Controllers\Admin\AnalyticsController;
 //  ---------------- SUPER ADMIN ONLY ROUTES ------------------------------------------------------------------------------
     Route::middleware(['auth:sanctum','role:super_admin'])->group(function () {
 
-        // ADMIN REQUESTS
-        Route::get('/superadmin/admin-requests', [SuperAdminController::class, 'adminRequests']); // GET ALL PENDING ADMIN SIGNUP REQUESTS
-
-        // GET ALL ADMINS (PENDING + APPROVED + REJECTED)
-        Route::get('/superadmin/admins', [SuperAdminController::class, 'getAdmins']); // GET ALL ADMINS (PENDING + APPROVED + REJECTED)
-        Route::post('/superadmin/admin-request/{id}/approve', [SuperAdminController::class, 'approveAdmin']); // APPROVE ADMIN SIGNUP REQUEST
-        Route::delete('/superadmin/admin-request/{id}', [SuperAdminController::class, 'rejectAdmin']); // REJECT & DELETE ADMIN SIGNUP REQUEST
+        // ---------------- SUPER ADMIN PROFILE ----------------
+        Route::get('/superadmin/me', [SuperAdminController::class, 'me']); // ADMIN DETAILS
+        Route::post('/superadmin/logout', [SuperAdminController::class, 'logout']); // ADMIN LOGOUT
         
-        // ADMIN MANAGEMENT
-        Route::delete('/superadmin/admins/{id}', [SuperAdminController::class, 'deleteAdmin']);
+        // ---------------- PRODUCTS ----------------
+        Route::get('/superadmin/products', [SuperAdminProductController::class, 'index']); // VIEW PRODUCTS
+        Route::get('/superadmin/products/{id}', [SuperAdminProductController::class, 'show']); // VIEW SINGLE PRODUCT
+        Route::post('/superadmin/products', [SuperAdminProductController::class, 'store']); // CREATE PRODUCT
+        Route::put('/superadmin/products/{id}', [SuperAdminProductController::class, 'update']); // UPDATE PRODUCT
+        Route::delete('/superadmin/products/{id}', [SuperAdminProductController::class, 'destroy']); // DELETE PRODUCT
+
+        // ---------------- PRODUCT IMAGES ----------------
+        Route::post('/superadmin/products/{id}/images', [SuperAdminProductController::class, 'uploadImages']); // UPLOAD PRODUCT IMAGES
+        Route::delete('/superadmin/products/images/{image}', [SuperAdminProductController::class, 'destroyImage']);
+        Route::put('/superadmin/products/images/{image}/primary', [SuperAdminProductController::class, 'setPrimaryImage']);
+        Route::put('/superadmin/products/images/{image}/order', [SuperAdminProductController::class, 'updateImageOrder']);
+
+        // ---------------- VARIANTS ----------------
+        Route::post('/superadmin/products/{product}/variants', [SuperAdminProductController::class, 'storeVariant']);
+        Route::put('/superadmin/products/{product}/variants/{variant}', [SuperAdminProductController::class, 'updateVariant']);
+        Route::delete('/superadmin/products/{product}/variants/{variant}', [SuperAdminProductController::class, 'destroyVariant']);
+
+        // ---------------- VARIANT IMAGES ----------------
+        Route::post('/superadmin/products/{product}/variants/{variant}/images', [SuperAdminProductController::class, 'uploadVariantImages']);
+
+        // ---------------- SELLER MANAGEMENT ----------------
+        Route::get('/superadmin/seller-requests', [SuperAdminSellerController::class, 'sellerRequests']); // GET ALL PENDING ADMIN SIGNUP REQUESTS
+        Route::get('/superadmin/sellers', [SuperAdminSellerController::class, 'sellers']);
+        Route::post('/superadmin/seller-request/{user}/approve', [SuperAdminSellerController::class, 'approveSeller']);
+        Route::post('/superadmin/seller-request/{user}/reject', [SuperAdminSellerController::class, 'rejectSeller']);
+        Route::post('/superadmin/sellers/{user}/verification/approve', [SuperAdminSellerController::class, 'approveVerification']);
+        Route::post('/superadmin/sellers/{user}/verification/reject', [SuperAdminSellerController::class, 'rejectVerification']);
+
+        // GET ALL SELLERS (PENDING + APPROVED + REJECTED)
+        Route::delete('/superadmin/sellers/{id}', [SuperAdminSellerController::class, 'deleteSeller']); // DELETE SELLER ACCOUNT
 
         // USER MANAGEMENT
         Route::get('/superadmin/users', [SuperAdminController::class, 'users']); // GET ALL USERS
@@ -203,13 +237,26 @@ use App\Http\Controllers\Admin\AnalyticsController;
         Route::put('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'update']); // UPDATE PICKUP LOCATION
         Route::delete('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'destroy']); // DELETE PICKUP LOCATION
 
+        //PAYMENT
+        Route::post('/superadmin/orders/{id}/verify-bank-transfer', [PaymentController::class, 'verifyBankTransfer']);
+
         // ORDERS OVERVIEW
-        Route::get('/superadmin/orders', [SuperAdminController::class, 'orders']);
+        Route::get('/superadmin/orders', [SuperAdminOrderController::class, 'orders']); // VIEW ALL ORDERS
+        Route::get('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'show']); // VIEW SINGLE ORDER
+        Route::put('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'update']); // UPDATE ORDER
+        Route::patch('/superadmin/orders/{id}/status', [SuperAdminOrderController::class, 'updateStatus']);
+        Route::delete('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'destroy']); // DELETE ORDER
+        Route::get('/superadmin/orders', [SuperAdminOrderController::class, 'orders']);
 
+        // REVIEWS
+        Route::get('/superadmin/reviews', [ReviewController::class, 'adminIndex']); // GET ALL REVIEWS
+        Route::get('/superadmin/reviews/{reviewId}', [ReviewController::class, 'adminShow']); // GET SINGLE REVIEW
+        Route::put('/superadmin/reviews/{reviewId}', [ReviewController::class, 'adminUpdate']); // EDIT REVIEW
+        Route::patch('/superadmin/reviews/{reviewId}/approve', [ReviewController::class, 'approve']); // APPROVE REVIEW
+        Route::patch('/superadmin/reviews/{reviewId}/reject', [ReviewController::class, 'reject']); // REJECT REVIEW
+        Route::delete('/superadmin/reviews/{reviewId}', [ReviewController::class, 'adminDestroy']); // DELETE REVIEW
+
+         // =================== ANALYTICS ===================
         Route::get('/superadmin/analytics', [AnalyticsController::class, 'index']); // GET ANALYTICS DATA
-
-        // REVIEWS OVERRIDE
-        // Route::get('/superadmin/reviews', [SuperAdminController::class, 'reviews']);
-        // Route::delete('/superadmin/reviews/{id}', [SuperAdminController::class, 'deleteReview']);
     });
 //  ---------------------- ---------------------------------------------------------------- -------------------------------

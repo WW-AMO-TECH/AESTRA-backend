@@ -8,19 +8,20 @@ use App\Models\Review;
 class Product extends Model
 {
     protected $fillable = [
+        'seller_id',
+        'name',
         'sku',
         'slug',
-        'name',
         'original_price',
         'discount_percentage',
         'price',
         'category_id',
         'brand_id',
         'model',
+        'color',
         'grade',
         'condition',
         'stock',
-        'color',
         'weight',
         'ram',
         'battery',
@@ -38,10 +39,9 @@ class Product extends Model
         'description',
     ];
 
-    /* TYPE CASTING */
     protected $casts = [
-        'price' => 'decimal:2',
         'original_price' => 'decimal:2',
+        'price' => 'decimal:2',
         'weight' => 'decimal:2',
         'discount_percentage' => 'integer',
         'stock' => 'integer',
@@ -49,67 +49,59 @@ class Product extends Model
         'status' => 'boolean',
     ];
 
-    // Brand
+    public function seller()
+    {
+        return $this->belongsTo(User::class, 'seller_id');
+    }
+
     public function brand()
     {
         return $this->belongsTo(Brand::class);
     }
 
-    // Category
     public function category()
     {
         return $this->belongsTo(Category::class);
     }
 
-    // Product Images (Gallery)
     public function images()
     {
         return $this->hasMany(ProductImage::class)
             ->orderBy('sort_order');
     }
 
-    // Variants
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
     }
 
-    /* ACCESSORS (OPTIONAL BUT VERY USEFUL) */
-
-    // Final price after discount
-    public function getFinalPriceAttribute()
-    {
-        $price = (float) $this->price;
-        $discount = (int) $this->discount_percentage;
-
-        if ($discount <= 0) {
-            return $price;
-        }
-
-        return $price - ($price * $discount / 100);
-    }
-
-    /* Check if product is active. */
-    public function getIsActiveAttribute()
-    {
-        return (bool) $this->status;
-    }
-
-    // Stock status
-    public function getInStockAttribute()
-    {
-        return $this->stock > 0;
-    }
-
-    // Wishlist relationship
     public function wishlists()
     {
         return $this->hasMany(Wishlist::class);
     }
 
-    // Reviews relationship
     public function reviews()
     {
         return $this->hasMany(Review::class);
+    }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function getFinalPriceAttribute()
+    {
+        return (float) $this->price;
+    }
+
+    public function getIsActiveAttribute()
+    {
+        return (bool) $this->status;
+    }
+
+    public function getInStockAttribute()
+    {
+        return $this->stock > 0;
     }
 }

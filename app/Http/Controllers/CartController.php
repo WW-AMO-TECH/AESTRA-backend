@@ -8,11 +8,9 @@ use Illuminate\Http\Request;
 
 class CartController extends Controller
 {
-    // GET CART
     public function index(Request $request)
     {
         try {
-
             $cart = Cart::with([
                 'product.images',
                 'product.brand',
@@ -20,14 +18,15 @@ class CartController extends Controller
             ->where('user_id', auth()->id())
             ->get()
             ->map(function ($item) {
-
                 $product = $item->product;
 
-                // FIRST PRODUCT IMAGE
+                if (!$product) {
+                    return null;
+                }
+
                 $image = null;
 
-                if ($product && $product->images->count() > 0) {
-
+                if ($product->images->count() > 0) {
                     $firstImage = $product->images->first();
 
                     if ($firstImage->image_url) {
@@ -44,78 +43,104 @@ class CartController extends Controller
                     'product' => [
                         'id' => $product->id,
                         'name' => $product->name,
+                        'original_price' => $product->original_price,
+                        'discount_percentage' => $product->discount_percentage,
                         'price' => $product->price,
+                        'final_price' => $product->final_price,
                         'stock' => $product->stock,
-
                         'brand' => $product->brand?->name,
-
-                        // IMAGE FOR FRONTEND
                         'image' => $image,
-
                         'images' => $product->images,
                     ],
                 ];
-            });
+            })
+            ->filter()
+            ->values();
 
             return response()->json($cart);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
 
-    // ADD TO CART
     public function store(Request $request)
     {
         try {
-
             $request->validate([
                 'product_id' => 'required|exists:products,id',
+                'quantity' => 'nullable|integer|min:1',
             ]);
 
-            $cartItem = Cart::where('user_id', auth()->id())
-                ->where('product_id', $request->product_id)
+            $product = \App\Models\Product::where('id', $request->product_id)
+                ->where('status', true)
                 ->first();
 
+            if (!$product) {
+                return response()->json([
+                    'message' => 'Product is unavailable.',
+                ], 422);
+            }
+
+            $quantity = (int) ($request->quantity ?? 1);
+
+            $cartItem = Cart::where('user_id', auth()->id())
+                ->where('product_id', $product->id)
+                ->first();
+
+            $newQuantity = ($cartItem?->quantity ?? 0) + $quantity;
+
+            if ($newQuantity > $product->stock) {
+                return response()->json([
+                    'message' => "Only {$product->stock} item(s) are currently available.",
+                ], 422);
+            }
+
             if ($cartItem) {
-
-                $cartItem->increment('quantity');
-
+                $cartItem->update([
+                    'quantity' => $newQuantity,
+                ]);
             } else {
-
                 Cart::create([
                     'user_id' => auth()->id(),
-                    'product_id' => $request->product_id,
-                    'quantity' => 1,
+                    'product_id' => $product->id,
+                    'quantity' => $quantity,
                 ]);
             }
 
             return response()->json([
                 'message' => 'Added to cart',
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
 
-    // UPDATE QUANTITY
     public function update(Request $request, $id)
     {
         try {
-
             $request->validate([
                 'quantity' => 'required|integer|min:1',
             ]);
 
-            $cart = Cart::where('user_id', auth()->id())
+            $cart = Cart::with('product')
+                ->where('user_id', auth()->id())
                 ->findOrFail($id);
+
+            if (!$cart->product || !$cart->product->status) {
+                return response()->json([
+                    'message' => 'This product is no longer available.',
+                ], 422);
+            }
+
+            if ($request->quantity > $cart->product->stock) {
+                return response()->json([
+                    'message' => "Only {$cart->product->stock} item(s) are currently available.",
+                ], 422);
+            }
 
             $cart->update([
                 'quantity' => $request->quantity,
@@ -124,20 +149,16 @@ class CartController extends Controller
             return response()->json([
                 'message' => 'Updated',
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
 
-    // REMOVE ITEM
     public function destroy($id)
     {
         try {
-
             $cart = Cart::where('user_id', auth()->id())
                 ->findOrFail($id);
 
@@ -146,9 +167,7 @@ class CartController extends Controller
             return response()->json([
                 'message' => 'Removed',
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -160,7 +179,7 @@ class CartController extends Controller
         Cart::where('user_id', auth()->id())->delete();
 
         return response()->json([
-            'message' => 'Cart cleared successfully'
+            'message' => 'Cart cleared successfully',
         ]);
     }
 }

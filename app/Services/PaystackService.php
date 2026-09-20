@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PaystackService
 {
@@ -17,18 +18,42 @@ class PaystackService
 
     public function initializePayment($data)
     {
-        return Http::withToken($this->secret)->post($this->baseUrl . '/transaction/initialize', [
+        $payload = [
             'email' => $data['email'],
-            'amount' => $data['amount'] * 100, // Paystack uses kobo
+            'amount' => (int) round((float) $data['amount'] * 100),
             'callback_url' => $data['callback_url'],
             'metadata' => $data['metadata'] ?? [],
-        ])->json();
+        ];
+
+        Log::info('PAYSTACK INITIALIZATION REQUEST', [
+            'url' => $this->baseUrl . '/transaction/initialize',
+            'payload' => $payload,
+        ]);
+
+        $response = Http::withToken($this->secret)->post(
+            $this->baseUrl . '/transaction/initialize',
+            $payload
+        );
+
+        Log::info('PAYSTACK INITIALIZATION RESPONSE', [
+            'http_status' => $response->status(),
+            'response' => $response->json(),
+        ]);
+
+        return $response->json();
     }
 
     public function verifyPayment($reference)
     {
-        return Http::withToken($this->secret)
-            ->get($this->baseUrl . '/transaction/verify/' . $reference)
-            ->json();
+        $response = Http::withToken($this->secret)
+            ->get($this->baseUrl . '/transaction/verify/' . $reference);
+
+        Log::info('PAYSTACK VERIFICATION RESPONSE', [
+            'reference' => $reference,
+            'http_status' => $response->status(),
+            'response' => $response->json(),
+        ]);
+
+        return $response->json();
     }
 }

@@ -18,13 +18,13 @@ class SuperAdminSeeder extends Seeder
         if (!User::where('role', 'super_admin')->exists()) {
 
             User::create([
-                'name' => 'Richmond Chinelo Anne',
-                'email' => 'richmondchineloanne@gmail.com',
-                'phone' => '09034090272',
-                'password' => Hash::make('Richmond#123'),
-
+                'name' => 'Super Admin',
+                'email' => 'superadmin@gmail.com',
+                'phone' => '09011112222',
+                'password' => Hash::make('Superadmin#123'),
                 'role' => 'super_admin',
                 'status' => 'active',
+                'verification_status' => 'verified',
                 'is_blocked' => false,
             ]);
         }

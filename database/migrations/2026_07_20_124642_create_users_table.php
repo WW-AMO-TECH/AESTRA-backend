@@ -6,32 +6,65 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+
+            // Basic account information
             $table->string('name');
+            $table->string('store_name')->nullable();
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
             $table->string('phone')->nullable()->unique();
+
+            // Addresses and business information
+            $table->text('address')->nullable();
+            $table->text('business_address')->nullable();
+            $table->text('contact_information')->nullable();
+
+            // Google authentication
+            $table->string('google_id')->nullable()->unique();
+            $table->string('avatar')->nullable();
+
+            // Verification
+            $table->timestamp('email_verified_at')->nullable();
             $table->timestamp('phone_verified_at')->nullable();
-            $table->string('password');
-            $table->enum('role', ['user','admin','super_admin'])->default('user');
-            $table->enum('status', ['active', 'pending', 'rejected']);
+            $table->enum('verification_status', [
+                'unverified',
+                'pending',
+                'verified',
+                'rejected'
+            ])->default('unverified');
+
+            // Authentication
+            $table->string('password')->nullable();
+            $table->rememberToken();
+
+            // Account type/status
+            $table->enum('role', [
+                'user',
+                'seller',
+                'super_admin'
+            ])->default('user');
+
+            $table->enum('status', [
+                'active',
+                'pending',
+                'rejected'
+            ])->default('active');
+
             $table->boolean('is_blocked')->default(false);
+
+            // Seller approval
             $table->unsignedBigInteger('approved_by')->nullable();
             $table->timestamp('approved_at')->nullable();
+
             $table->foreign('approved_by')
                 ->references('id')
                 ->on('users')
                 ->nullOnDelete();
 
-            $table->rememberToken();
             $table->timestamps();
-
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
@@ -50,13 +83,10 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('users');
     }
 };

@@ -6,13 +6,22 @@ use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
-    /* Get all categories. */
     public function index()
     {
-        $categories = Category::with('brands')
+        $categories = Category::with([
+            'brands',
+            'parent',
+            'children' => function ($query) {
+                $query->with('brands')
+                    ->orderBy('sort_order')
+                    ->orderBy('name');
+            }
+        ])
+            ->orderBy('parent_id')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -20,19 +29,43 @@ class CategoryController extends Controller
         return response()->json($categories);
     }
 
-    /* Get a single category. */
     public function show($id)
     {
-        $category = Category::with('brands')->findOrFail($id);
+        $category = Category::with([
+            'brands',
+            'parent',
+            'children' => function ($query) {
+                $query->with('brands')
+                    ->orderBy('sort_order')
+                    ->orderBy('name');
+            }
+        ])->findOrFail($id);
 
         return response()->json($category);
     }
 
-    /* Create a category */
     public function store(Request $request)
     {
+        $request->merge([
+            'parent_id' => $request->filled('parent_id')
+                ? (int) $request->parent_id
+                : null,
+        ]);
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:categories,name',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('categories', 'name')->where(function ($query) use ($request) {
+                    return $query->where('parent_id', $request->parent_id);
+                }),
+            ],
+            'parent_id' => [
+                'nullable',
+                'integer',
+                'exists:categories,id',
+            ],
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'status' => 'nullable|boolean',
@@ -49,18 +82,40 @@ class CategoryController extends Controller
         $category = Category::create($validated);
 
         return response()->json([
-            'message' => 'Category created successfully.',
-            'category' => $category->load('brands'),
+            'message' => $validated['parent_id']
+                ? 'Subcategory created successfully.'
+                : 'Category created successfully.',
+            'category' => $category->load('brands', 'parent', 'children'),
         ], 201);
     }
 
-    /* Update a category. */
     public function update(Request $request, $id)
     {
         $category = Category::findOrFail($id);
 
+        $request->merge([
+            'parent_id' => $request->filled('parent_id')
+                ? (int) $request->parent_id
+                : null,
+        ]);
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:categories,name,' . $category->id,
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('categories', 'name')
+                    ->where(function ($query) use ($request) {
+                        return $query->where('parent_id', $request->parent_id);
+                    })
+                    ->ignore($category->id),
+            ],
+            'parent_id' => [
+                'nullable',
+                'integer',
+                'exists:categories,id',
+                Rule::notIn([$category->id]),
+            ],
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'status' => 'nullable|boolean',
@@ -70,7 +125,6 @@ class CategoryController extends Controller
         $validated['slug'] = Str::slug($validated['name']);
 
         if ($request->hasFile('image')) {
-
             if ($category->image) {
                 Storage::disk('public')->delete($category->image);
             }
@@ -82,12 +136,13 @@ class CategoryController extends Controller
         $category->update($validated);
 
         return response()->json([
-            'message' => 'Category updated successfully.',
-            'category' => $category->load('brands'),
+            'message' => $validated['parent_id']
+                ? 'Subcategory updated successfully.'
+                : 'Category updated successfully.',
+            'category' => $category->load('brands', 'parent', 'children'),
         ]);
     }
 
-    /* Delete a category. */
     public function destroy($id)
     {
         $category = Category::findOrFail($id);

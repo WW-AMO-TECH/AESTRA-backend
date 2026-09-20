@@ -4,25 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class OrderItem extends Model
+class WalletTransaction extends Model
 {
     protected $fillable = [
         'order_id',
-        'product_id',
         'seller_id',
-        'quantity',
-        'price',
+        'reference',
+        'type',
+        'amount',
+        'status',
+        'description',
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
-        'price' => 'decimal:2',
+        'amount' => 'decimal:2',
     ];
-
-    public function product()
-    {
-        return $this->belongsTo(Product::class);
-    }
 
     public function order()
     {
