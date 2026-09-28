@@ -44,6 +44,27 @@ class ReviewController extends Controller
         ]);
     }
 
+    /* Get reviews for the logged-in seller's products */
+    public function sellerIndex()
+    {
+        $seller = Auth::user();
+
+        $reviews = Review::with([
+            'user:id,name,email',
+            'product:id,name,seller_id',
+            'product.images'
+        ])
+        ->whereHas('product', function ($query) use ($seller) {
+            $query->where('seller_id', $seller->id);
+        })
+        ->latest()
+        ->get();
+
+        return response()->json([
+            'reviews' => $reviews,
+        ]);
+    }
+
     /**
      * Submit a new review.
      */

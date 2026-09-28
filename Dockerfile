@@ -41,4 +41,4 @@ COPY nginx.conf /etc/nginx/sites-enabled/default
 
 EXPOSE 80
 
-CMD service nginx start && php-fpm
+CMD php artisan storage:link --force && service nginx start && php-fpm

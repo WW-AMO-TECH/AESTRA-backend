@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class Country extends Model
 {
     protected $fillable = [
-        'name'
+        'name',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function states()
@@ -15,3 +20,4 @@ class Country extends Model
         return $this->hasMany(State::class);
     }
 }
+

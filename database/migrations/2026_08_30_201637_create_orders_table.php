@@ -39,7 +39,7 @@ return new class extends Migration
             $table->enum('payment_status', ['pending','paid','failed'])->default('pending');
 
             // Order status
-            $table->enum('status', ['pending','processing','delivered','ready_for_pickup','picked_up','completed','cancelled'])->default('pending');
+            $table->enum('status', ['pending','processing','ready_for_pickup','delivered','picked_up','completed','cancelled'])->default('pending');
             $table->decimal('subtotal', 10, 2);
             $table->decimal('total', 10, 2);
 

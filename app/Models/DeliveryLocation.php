@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PickupLocation extends Model
+class DeliveryLocation extends Model
 {
     protected $fillable = [
         'country_id',
@@ -12,8 +12,6 @@ class PickupLocation extends Model
         'name',
         'address',
         'phone',
-        'opening_time',
-        'closing_time',
         'latitude',
         'longitude',
         'is_active',
@@ -40,4 +38,3 @@ class PickupLocation extends Model
         return $this->hasMany(DeliveryRate::class);
     }
 }
-

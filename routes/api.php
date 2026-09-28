@@ -7,6 +7,7 @@ use App\Http\Controllers\SellerAuthController;
 use App\Http\Controllers\SellerVerificationController;
 use App\Http\Controllers\SuperAdminSellerController;
 use App\Http\Controllers\Seller\SellerProductController;
+use App\Http\Controllers\Seller\SellerOrderController;
 use App\Http\Controllers\SuperAdminProductController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\PaymentController;
@@ -22,6 +23,8 @@ use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\Admin\CountryController;
 use App\Http\Controllers\Admin\StateController;
 use App\Http\Controllers\Admin\PickupLocationController;
+use App\Http\Controllers\Admin\DeliveryLocationController;
+use App\Http\Controllers\Admin\DeliveryRateController;
 use App\Http\Controllers\Admin\AnalyticsController;
 
 
@@ -82,19 +85,27 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
 
         // ---------------- PICKUP LOCATIONS ----------------
         // COUNTRIES
-        Route::get('/superadmin/countries', [CountryController::class, 'index']); // VIEW COUNTRIES
-        Route::get('/superadmin/countries/{id}', [CountryController::class, 'show']); // VIEW SINGLE COUNTRY
+        Route::get('/countries', [CountryController::class, 'index']); // VIEW COUNTRIES
+        Route::get('/countries/{id}', [CountryController::class, 'show']); // VIEW SINGLE COUNTRY
 
         // STATES
-        Route::get('/superadmin/states', [StateController::class, 'index']); // VIEW STATES
-        Route::get('/superadmin/states/{id}', [StateController::class, 'show']); // VIEW SINGLE STATE
-        Route::get('/superadmin/countries/{country}/states', [StateController::class, 'getByCountry']);
+        Route::get('/states', [StateController::class, 'index']); // VIEW STATES
+        Route::get('/states/{id}', [StateController::class, 'show']); // VIEW SINGLE STATE
+        Route::get('/countries/{country}/states', [StateController::class, 'getByCountry']);
 
-        // LOCATIONS
-        Route::get('/superadmin/pickup-locations', [PickupLocationController::class, 'index']); // VIEW PICKUP LOCATIONS
-        Route::get('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'show']); // VIEW SINGLE PICKUP LOCATION
-        Route::get('/superadmin/states/{stateId}/locations', [PickupLocationController::class, 'getLocations']); // GET LOCATIONS BY STATE
+        // PICKUP LOCATIONS
+        Route::get('/pickup-locations', [PickupLocationController::class, 'index']); // VIEW PICKUP LOCATIONS
+        Route::get('/pickup-locations/{id}', [PickupLocationController::class, 'show']); // VIEW SINGLE PICKUP LOCATION
+        Route::get('/states/{stateId}/pickup-locations', [PickupLocationController::class, 'getLocations']); // GET LOCATIONS BY STATE
 
+        // DELIVERY LOCATIONS
+        Route::get('/delivery-locations', [DeliveryLocationController::class, 'index']);
+        Route::get('/delivery-locations/{id}', [DeliveryLocationController::class, 'show']);
+        Route::get('/states/{stateId}/delivery-locations', [DeliveryLocationController::class, 'getLocations']);
+        
+        // QUOTE
+        Route::get('/delivery-rates/quote', [DeliveryRateController::class, 'quote']);
+        
         // ---------------- PAYMENTS ----------------
         Route::post('/payments/initiate', [PaymentController::class, 'initialize']);
         Route::get('/payments/verify', [PaymentController::class, 'verifyPayment']);
@@ -115,6 +126,7 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
         Route::delete('/reviews/{reviewId}', [ReviewController::class, 'destroy']);
     });
 //  ---------------------- -----------------------
+
 
 // ================ SELLER ROUTES ================
     Route::middleware(['auth:sanctum', 'role:seller'])->group(function () {
@@ -152,10 +164,18 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
         // ================ PRODUCT IMPORT / EXPORT ==================
         Route::post('/seller/products/import', [ProductImportExportController::class, 'import']);
         Route::get('/seller/products/export', [ProductImportExportController::class, 'export']);
+
+        // ================ ORDERS ==================
+        Route::get('/seller/orders', [SellerOrderController::class, 'index']);
+        Route::get('/seller/orders/{id}', [SellerOrderController::class, 'show']);
+
+        // ================ REVIEWS ==================
+        Route::get('/seller/reviews', [ReviewController::class, 'sellerIndex']);
     });
 //  ---------------------- -----------------------
 
-//  ---------------- ADMIN + SUPER ADMIN ROUTES ---------------------------------------------------------------------------
+
+//  ---------------- SELLER + SUPER ADMIN ROUTES ---------------------------------------------------------------------------
     Route::middleware(['auth:sanctum','role:seller,super_admin'])->group(function () {
         
         // PRODUCT IMPORT/EXPORT
@@ -225,28 +245,54 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
 
         //PICKUP LOCATIONS
         // COUNTRIES
+        Route::get('/superadmin/countries', [CountryController::class, 'index']);
+        Route::get('/superadmin/countries/{id}', [CountryController::class, 'show']);
         Route::post('/superadmin/countries', [CountryController::class, 'store']); // CREATE COUNTRY
         Route::put('/superadmin/countries/{id}', [CountryController::class, 'update']); // UPDATE COUNTRY
+        Route::patch('/superadmin/countries/{id}/toggle-status', [CountryController::class, 'toggleStatus']);
         Route::delete('/superadmin/countries/{id}', [CountryController::class, 'destroy']); // DELETE COUNTRY
         // STATES
+        Route::get('/superadmin/states', [StateController::class, 'index']);
+        Route::get('/superadmin/states/{id}', [StateController::class, 'show']);
+        Route::get('/superadmin/countries/{country}/states', [StateController::class, 'getByCountry']);
         Route::post('/superadmin/states', [StateController::class, 'store']); // CREATE STATE
         Route::put('/superadmin/states/{id}', [StateController::class, 'update']); // UPDATE STATE
+        Route::patch('/superadmin/states/{id}/toggle-status', [StateController::class, 'toggleStatus']);
         Route::delete('/superadmin/states/{id}', [StateController::class, 'destroy']); // DELETE STATE
         // PICKUP LOCATIONS
+        Route::get('/superadmin/pickup-locations', [PickupLocationController::class, 'index']);
+        Route::get('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'show']);
+        Route::get('/superadmin/states/{stateId}/locations', [PickupLocationController::class, 'getLocations']);
         Route::post('/superadmin/pickup-locations', [PickupLocationController::class, 'store']); // CREATE PICKUP LOCATION
         Route::put('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'update']); // UPDATE PICKUP LOCATION
+        Route::patch('/superadmin/pickup-locations/{id}/toggle-status', [PickupLocationController::class, 'toggleStatus']);
         Route::delete('/superadmin/pickup-locations/{id}', [PickupLocationController::class, 'destroy']); // DELETE PICKUP LOCATION
+        // DELIVERY LOCATIONS
+        Route::get('/superadmin/delivery-locations', [DeliveryLocationController::class, 'index']);
+        Route::get('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'show']);
+        Route::get('/superadmin/delivery-locations', [DeliveryLocationController::class, 'index']);
+        Route::get('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'show']);
+        Route::post('/superadmin/delivery-locations', [DeliveryLocationController::class, 'store']);
+        Route::put('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'update']);
+        Route::patch('/superadmin/delivery-locations/{id}/toggle-status', [DeliveryLocationController::class, 'toggleStatus']);
+        Route::delete('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'destroy']);
+        // DELIVERY RATES
+        Route::get('/superadmin/delivery-rates', [DeliveryRateController::class, 'index']);
+        Route::get('/superadmin/delivery-rates/{id}', [DeliveryRateController::class, 'show']);
+        Route::post('/superadmin/delivery-rates', [DeliveryRateController::class, 'store']);
+        Route::put('/superadmin/delivery-rates/{id}', [DeliveryRateController::class, 'update']);
+        Route::patch('/superadmin/delivery-rates/{id}/toggle-status', [DeliveryRateController::class, 'toggleStatus']);
+        Route::delete('/superadmin/delivery-rates/{id}', [DeliveryRateController::class, 'destroy']);
 
         //PAYMENT
         Route::post('/superadmin/orders/{id}/verify-bank-transfer', [PaymentController::class, 'verifyBankTransfer']);
 
         // ORDERS OVERVIEW
-        Route::get('/superadmin/orders', [SuperAdminOrderController::class, 'orders']); // VIEW ALL ORDERS
+        Route::get('/superadmin/orders', [SuperAdminOrderController::class, 'index']); // VIEW ALL ORDERS
         Route::get('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'show']); // VIEW SINGLE ORDER
         Route::put('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'update']); // UPDATE ORDER
         Route::patch('/superadmin/orders/{id}/status', [SuperAdminOrderController::class, 'updateStatus']);
         Route::delete('/superadmin/orders/{id}', [SuperAdminOrderController::class, 'destroy']); // DELETE ORDER
-        Route::get('/superadmin/orders', [SuperAdminOrderController::class, 'orders']);
 
         // REVIEWS
         Route::get('/superadmin/reviews', [ReviewController::class, 'adminIndex']); // GET ALL REVIEWS
@@ -260,3 +306,4 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
         Route::get('/superadmin/analytics', [AnalyticsController::class, 'index']); // GET ANALYTICS DATA
     });
 //  ---------------------- ---------------------------------------------------------------- -------------------------------
+

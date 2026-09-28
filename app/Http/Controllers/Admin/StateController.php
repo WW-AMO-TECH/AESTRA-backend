@@ -15,10 +15,9 @@ class StateController extends Controller
             $states = State::with('country')
                 ->latest()
                 ->get();
+
             return response()->json($states);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -33,15 +32,14 @@ class StateController extends Controller
                 ->findOrFail($id);
 
             return response()->json($state);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
 
+    // GET STATES BY COUNTRY
     public function getByCountry($countryId)
     {
         $states = State::where('country_id', $countryId)
@@ -50,7 +48,7 @@ class StateController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $states
+            'data' => $states,
         ]);
     }
 
@@ -61,19 +59,20 @@ class StateController extends Controller
             $request->validate([
                 'country_id' => 'required|exists:countries,id',
                 'name' => 'required|string|max:255',
+                'is_active' => 'sometimes|boolean',
             ]);
+
             $state = State::create([
                 'country_id' => $request->country_id,
                 'name' => $request->name,
                 'is_active' => $request->is_active ?? true,
             ]);
+
             return response()->json([
                 'message' => 'State created successfully',
                 'state' => $state,
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -85,10 +84,13 @@ class StateController extends Controller
     {
         try {
             $state = State::findOrFail($id);
+
             $request->validate([
                 'country_id' => 'required|exists:countries,id',
                 'name' => 'required|string|max:255',
+                'is_active' => 'sometimes|boolean',
             ]);
+
             $state->update([
                 'country_id' => $request->country_id,
                 'name' => $request->name,
@@ -97,10 +99,30 @@ class StateController extends Controller
 
             return response()->json([
                 'message' => 'State updated successfully',
+                'state' => $state->fresh()->load('country'),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // TOGGLE STATE STATUS
+    public function toggleStatus($id)
+    {
+        try {
+            $state = State::findOrFail($id);
+
+            $state->update([
+                'is_active' => !$state->is_active,
             ]);
 
+            return response()->json([
+                'message' => 'State status updated successfully',
+                'state' => $state->fresh()->load('country'),
+            ]);
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -113,19 +135,18 @@ class StateController extends Controller
         try {
             $state = State::findOrFail($id);
             $state->delete();
+
             return response()->json([
                 'message' => 'State deleted successfully',
             ]);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
         }
     }
 
-    // GET STATES BY COUNTRY
+    // GET ACTIVE STATES BY COUNTRY
     public function getStates($countryId)
     {
         try {
@@ -133,10 +154,9 @@ class StateController extends Controller
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get();
+
             return response()->json($states);
-
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);

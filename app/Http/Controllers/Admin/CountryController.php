@@ -13,6 +13,7 @@ class CountryController extends Controller
     {
         try {
             $countries = Country::latest()->get();
+
             return response()->json($countries);
         } catch (\Exception $e) {
             return response()->json([
@@ -27,17 +28,19 @@ class CountryController extends Controller
         try {
             $request->validate([
                 'name' => 'required|string|max:255|unique:countries,name',
+                'is_active' => 'sometimes|boolean',
             ]);
+
             $country = Country::create([
                 'name' => $request->name,
                 'is_active' => $request->is_active ?? true,
             ]);
+
             return response()->json([
                 'message' => 'Country created successfully',
                 'country' => $country,
             ]);
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -49,6 +52,7 @@ class CountryController extends Controller
     {
         try {
             $country = Country::findOrFail($id);
+
             return response()->json($country);
         } catch (\Exception $e) {
             return response()->json([
@@ -62,19 +66,43 @@ class CountryController extends Controller
     {
         try {
             $country = Country::findOrFail($id);
+
             $request->validate([
                 'name' => 'required|string|max:255|unique:countries,name,' . $id,
+                'is_active' => 'sometimes|boolean',
             ]);
+
             $country->update([
                 'name' => $request->name,
                 'is_active' => $request->is_active ?? $country->is_active,
             ]);
+
             return response()->json([
                 'message' => 'Country updated successfully',
+                'country' => $country->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // TOGGLE COUNTRY STATUS
+    public function toggleStatus($id)
+    {
+        try {
+            $country = Country::findOrFail($id);
+
+            $country->update([
+                'is_active' => !$country->is_active,
             ]);
 
+            return response()->json([
+                'message' => 'Country status updated successfully',
+                'country' => $country->fresh(),
+            ]);
         } catch (\Exception $e) {
-
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);
@@ -87,6 +115,7 @@ class CountryController extends Controller
         try {
             $country = Country::findOrFail($id);
             $country->delete();
+
             return response()->json([
                 'message' => 'Country deleted successfully',
             ]);

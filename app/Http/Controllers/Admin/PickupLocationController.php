@@ -8,155 +8,152 @@ use Illuminate\Http\Request;
 
 class PickupLocationController extends Controller
 {
-    // GET PICKUP LOCATIONS
     public function index()
     {
-        try {
-            $locations = PickupLocation::with([
-                'country',
-                'state'
-            ])
-            ->latest()
-            ->get();
-            return response()->json($locations);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
+        return response()->json(
+            PickupLocation::with(['country', 'state'])->get()
+        );
     }
 
-    // GET SINGLE PICKUP LOCATION
     public function show($id)
     {
-        try {
-            $location = PickupLocation::with([
-                'country',
-                'state'
-            ])
-            ->findOrFail($id);
-
-            return response()->json($location);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
+        return response()->json(
+            PickupLocation::with(['country', 'state'])->findOrFail($id)
+        );
     }
 
-    // CREATE PICKUP LOCATION
-    public function store(Request $request)
-    {
-        try {
-            $request->validate([
-                'country_id' => 'required|exists:countries,id',
-                'state_id' => 'required|exists:states,id',
-                'name' => 'required|string|max:255',
-                'address' => 'required|string',
-                'phone' => 'nullable|string|max:40',
-                'opening_time' => 'required',
-                'closing_time' => 'required',
-            ]);
-
-            $location = PickupLocation::create([
-                'country_id' => $request->country_id,
-                'state_id' => $request->state_id,
-                'name' => $request->name,
-                'address' => $request->address,
-                'phone' => $request->phone,
-                'opening_time' => $request->opening_time,
-                'closing_time' => $request->closing_time,
-                'is_active' => $request->is_active ?? true,
-            ]);
-
-            return response()->json([
-                'message' => 'Pickup location created successfully',
-                'location' => $location,
-            ]);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    // UPDATE PICKUP LOCATION
-    public function update(Request $request, $id)
-    {
-        try {
-            $location = PickupLocation::findOrFail($id);
-            $request->validate([
-                'country_id' => 'required|exists:countries,id',
-                'state_id' => 'required|exists:states,id',
-                'name' => 'required|string|max:255',
-                'address' => 'required|string',
-                'phone' => 'nullable|string|max:40',
-                'opening_time' => 'required',
-                'closing_time' => 'required',
-            ]);
-
-            $location->update([
-                'country_id' => $request->country_id,
-                'state_id' => $request->state_id,
-                'name' => $request->name,
-                'address' => $request->address,
-                'phone' => $request->phone,
-                'opening_time' => $request->opening_time,
-                'closing_time' => $request->closing_time,
-                'is_active' => $request->is_active ?? $location->is_active,
-            ]);
-
-            return response()->json([
-                'message' => 'Pickup location updated successfully',
-            ]);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    // DELETE PICKUP LOCATION
-    public function destroy($id)
-    {
-        try {
-            $location = PickupLocation::findOrFail($id);
-            $location->delete();
-            return response()->json([
-                'message' => 'Pickup location deleted successfully',
-            ]);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    // GET LOCATIONS BY STATE
     public function getLocations($stateId)
     {
-        try {
-            $locations = PickupLocation::where('state_id', $stateId)
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get();
-            return response()->json($locations);
+        return response()->json(
+            PickupLocation::where('state_id', $stateId)
+                ->with(['country', 'state'])
+                ->get()
+        );
+    }
 
-        } catch (\Exception $e) {
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'country_id' => 'required|exists:countries,id',
+            'state_id' => 'required|exists:states,id',
+            'name' => 'required|string|max:255',
+            'address' => 'required|string|max:255',
+            'phone' => 'required|regex:/^[0-9]+$/|min:11|max:14',
+            'opening_time' => 'nullable|date_format:H:i',
+            'closing_time' => 'nullable|date_format:H:i',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'is_active' => 'sometimes|boolean',
+        ]);
 
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
+        $location = new PickupLocation();
+
+        $location->country_id = $validated['country_id'];
+        $location->state_id = $validated['state_id'];
+        $location->name = $validated['name'];
+        $location->address = $validated['address'];
+        $location->phone = $validated['phone'];
+        $location->opening_time = $validated['opening_time'] ?? null;
+        $location->closing_time = $validated['closing_time'] ?? null;
+        $location->latitude = $validated['latitude'];
+        $location->longitude = $validated['longitude'];
+        $location->is_active = $validated['is_active'] ?? true;
+
+        $location->save();
+
+        return response()->json([
+            'message' => 'Pickup location created successfully',
+            'data' => $location->fresh()->load(['country', 'state']),
+        ], 201);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $location = PickupLocation::findOrFail($id);
+
+        $validated = $request->validate([
+            'country_id' => 'sometimes|exists:countries,id',
+            'state_id' => 'sometimes|exists:states,id',
+            'name' => 'sometimes|string|max:255',
+            'address' => 'sometimes|string|max:255',
+            'phone' => 'sometimes|nullable|regex:/^[0-9]+$/|min:11|max:14',
+            'opening_time' => 'sometimes|nullable|date_format:H:i',
+            'closing_time' => 'sometimes|nullable|date_format:H:i',
+            'latitude' => 'sometimes|required|numeric|between:-90,90',
+            'longitude' => 'sometimes|required|numeric|between:-180,180',
+            'is_active' => 'sometimes|boolean',
+        ]);
+
+        if (array_key_exists('country_id', $validated)) {
+            $location->country_id = $validated['country_id'];
         }
+
+        if (array_key_exists('state_id', $validated)) {
+            $location->state_id = $validated['state_id'];
+        }
+
+        if (array_key_exists('name', $validated)) {
+            $location->name = $validated['name'];
+        }
+
+        if (array_key_exists('address', $validated)) {
+            $location->address = $validated['address'];
+        }
+
+        if (array_key_exists('phone', $validated)) {
+            $location->phone = $validated['phone'];
+        }
+
+        if (array_key_exists('opening_time', $validated)) {
+            $location->opening_time = $validated['opening_time'];
+        }
+
+        if (array_key_exists('closing_time', $validated)) {
+            $location->closing_time = $validated['closing_time'];
+        }
+
+        if (array_key_exists('latitude', $validated)) {
+            $location->latitude = $validated['latitude'];
+        }
+
+        if (array_key_exists('longitude', $validated)) {
+            $location->longitude = $validated['longitude'];
+        }
+
+        if (array_key_exists('is_active', $validated)) {
+            $location->is_active = $validated['is_active'];
+        }
+
+        $location->save();
+
+        return response()->json([
+            'message' => 'Pickup location updated successfully',
+            'data' => $location->fresh()->load(['country', 'state']),
+        ]);
+    }
+
+    public function toggleStatus($id)
+    {
+        $location = PickupLocation::findOrFail($id);
+
+        $location->is_active = !$location->is_active;
+        $location->save();
+
+        return response()->json([
+            'message' => 'Pickup location status updated successfully',
+            'data' => $location->fresh()->load(['country', 'state']),
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $location = PickupLocation::findOrFail($id);
+
+        $location->delete();
+
+        return response()->json([
+            'message' => 'Pickup location deleted successfully',
+        ]);
     }
 }
+
