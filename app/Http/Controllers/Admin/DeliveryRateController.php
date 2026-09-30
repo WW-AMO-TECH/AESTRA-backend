@@ -150,6 +150,12 @@ class DeliveryRateController extends Controller
             ->where('delivery_location_id', $validated['delivery_location_id'])
             ->where('delivery_type', $validated['delivery_type'])
             ->where('is_active', true)
+            ->whereHas('pickupLocation', function ($query) {
+                $query->where('is_active', true);
+            })
+            ->whereHas('deliveryLocation', function ($query) {
+                $query->where('is_active', true);
+            })
             ->first();
 
         if (!$rate) {

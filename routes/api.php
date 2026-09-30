@@ -270,8 +270,6 @@ Route::post('/payments/webhook', [PaymentController::class, 'handleWebhook']);
         // DELIVERY LOCATIONS
         Route::get('/superadmin/delivery-locations', [DeliveryLocationController::class, 'index']);
         Route::get('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'show']);
-        Route::get('/superadmin/delivery-locations', [DeliveryLocationController::class, 'index']);
-        Route::get('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'show']);
         Route::post('/superadmin/delivery-locations', [DeliveryLocationController::class, 'store']);
         Route::put('/superadmin/delivery-locations/{id}', [DeliveryLocationController::class, 'update']);
         Route::patch('/superadmin/delivery-locations/{id}/toggle-status', [DeliveryLocationController::class, 'toggleStatus']);

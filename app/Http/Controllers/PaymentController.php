@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\Cart;
+use App\Models\DeliveryLocation;
+use App\Models\DeliveryRate;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\PickupLocation;
 use App\Models\Product;
 use App\Models\SellerPayout;
 use App\Models\WalletSetting;
@@ -27,6 +29,99 @@ class PaymentController extends Controller
         $this->paystack = $paystack;
     }
 
+    /**
+     * Resolve and validate the delivery details from the database.
+     *
+     * The frontend never supplies the delivery fee.
+     * The backend retrieves the active rate using the selected locations/type.
+     */
+    private function resolveDeliveryDetails(Request $request): array
+    {
+        if ($request->fulfillment !== 'delivery') {
+            return [
+                'delivery_fee' => 0,
+                'delivery_type' => null,
+                'pickup_location_id' => null,
+                'delivery_location_id' => null,
+                'pickup_location' => null,
+                'delivery_location' => null,
+            ];
+        }
+
+        $validated = $request->validate([
+            'pickup_location_id' => [
+                'required',
+                'integer',
+                'exists:pickup_locations,id',
+            ],
+            'delivery_location_id' => [
+                'required',
+                'integer',
+                'exists:delivery_locations,id',
+            ],
+            'delivery_type' => [
+                'required',
+                'in:standard,express',
+            ],
+        ]);
+
+        $pickupLocation = PickupLocation::where(
+            'id',
+            $validated['pickup_location_id']
+        )
+            ->where('is_active', true)
+            ->first();
+
+        if (!$pickupLocation) {
+            abort(response()->json([
+                'message' => 'The selected pickup location is unavailable.',
+            ], 422));
+        }
+
+        $deliveryLocation = DeliveryLocation::where(
+            'id',
+            $validated['delivery_location_id']
+        )
+            ->where('is_active', true)
+            ->first();
+
+        if (!$deliveryLocation) {
+            abort(response()->json([
+                'message' => 'The selected delivery location is unavailable.',
+            ], 422));
+        }
+
+        $rate = DeliveryRate::where(
+            'pickup_location_id',
+            $pickupLocation->id
+        )
+            ->where(
+                'delivery_location_id',
+                $deliveryLocation->id
+            )
+            ->where(
+                'delivery_type',
+                $validated['delivery_type']
+            )
+            ->where('is_active', true)
+            ->first();
+
+        if (!$rate) {
+            abort(response()->json([
+                'message' => 'No active delivery rate is available for the selected locations and delivery type.',
+            ], 422));
+        }
+
+        return [
+            'delivery_fee' => round((float) $rate->delivery_fee, 2),
+            'delivery_type' => $rate->delivery_type,
+            'pickup_location_id' => $pickupLocation->id,
+            'delivery_location_id' => $deliveryLocation->id,
+            'pickup_location' => $pickupLocation->name,
+            'delivery_location' => $deliveryLocation->name,
+        ];
+    }
+
     public function initialize(Request $request)
     {
         try {
@@ -43,11 +138,27 @@ class PaymentController extends Controller
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'fulfillment' => 'required|in:delivery,pickup',
-                'full_name' => 'required|string',
-                'phone' => 'required|string',
+                'full_name' => 'required|string|max:255',
+                'phone' => 'required|string|max:50',
+
+                'state' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:255',
+                'address' => 'nullable|string|max:1000',
+
+                'pickup_state' => 'nullable|string|max:255',
+                'pickup_location' => 'nullable|string|max:255',
+
+                'pickup_location_id' => 'nullable|integer|exists:pickup_locations,id',
+                'delivery_location_id' => 'nullable|integer|exists:delivery_locations,id',
+                'delivery_type' => 'nullable|in:standard,express',
             ]);
 
             $user = auth()->user();
+
+            /*
+             * Delivery fee is resolved entirely from the database.
+             */
+            $deliveryDetails = $this->resolveDeliveryDetails($request);
 
             $productIds = collect($request->items)
                 ->pluck('product_id')
@@ -78,10 +189,21 @@ class PaymentController extends Controller
                     ], 422);
                 }
 
-                $originalPrice = (float) ($product->original_price ?? $product->price ?? 0);
+                $originalPrice = (float) (
+                    $product->original_price
+                    ?? $product->price
+                    ?? 0
+                );
+
                 $discountPercentage = min(
                     100,
-                    max(0, (float) ($product->discount_percentage ?? 0))
+                    max(
+                        0,
+                        (float) (
+                            $product->discount_percentage
+                            ?? 0
+                        )
+                    )
                 );
 
                 $price = round(
@@ -113,30 +235,62 @@ class PaymentController extends Controller
                 ], 422);
             }
 
+            /*
+             * Product subtotal + database delivery rate.
+             */
+            $deliveryFee = $deliveryDetails['delivery_fee'];
+
+            $amountBeforeTransactionFee = round(
+                $subtotal + $deliveryFee,
+                2
+            );
+
+            /*
+             * Paystack transaction fee is calculated on:
+             *
+             * product subtotal + delivery fee
+             */
             $transactionFeePercentage = self::PAYSTACK_FEE_PERCENTAGE;
+
             $transactionFee = round(
-                $subtotal * ($transactionFeePercentage / 100),
+                $amountBeforeTransactionFee *
+                ($transactionFeePercentage / 100),
                 2
             );
 
             $checkoutAmount = round(
-                $subtotal + $transactionFee,
+                $amountBeforeTransactionFee +
+                $transactionFee,
                 2
             );
 
             $metadata = [
                 'user_id' => $user->id,
                 'items' => $items,
+
                 'checkout_subtotal' => $subtotal,
+
+                'delivery_fee' => $deliveryFee,
+                'delivery_type' => $deliveryDetails['delivery_type'],
+                'pickup_location_id' => $deliveryDetails['pickup_location_id'],
+                'delivery_location_id' => $deliveryDetails['delivery_location_id'],
+                'delivery_location' => $deliveryDetails['delivery_location'],
+
+                'amount_before_transaction_fee' => $amountBeforeTransactionFee,
+
                 'transaction_fee' => $transactionFee,
                 'transaction_fee_percentage' => $transactionFeePercentage,
+
                 'checkout_amount' => $checkoutAmount,
+
                 'fulfillment' => $request->fulfillment,
                 'full_name' => $request->full_name,
                 'phone' => $request->phone,
+
                 'state' => $request->state,
                 'city' => $request->city,
                 'address' => $request->address,
+
                 'pickup_state' => $request->pickup_state,
                 'pickup_location' => $request->pickup_location,
             ];
@@ -144,6 +298,11 @@ class PaymentController extends Controller
             Log::info('PAYSTACK CHECKOUT SNAPSHOT CREATED', [
                 'user_id' => $user->id,
                 'subtotal' => $subtotal,
+                'delivery_fee' => $deliveryFee,
+                'delivery_type' => $deliveryDetails['delivery_type'],
+                'pickup_location_id' => $deliveryDetails['pickup_location_id'],
+                'delivery_location_id' => $deliveryDetails['delivery_location_id'],
+                'amount_before_transaction_fee' => $amountBeforeTransactionFee,
                 'transaction_fee' => $transactionFee,
                 'transaction_fee_percentage' => $transactionFeePercentage,
                 'checkout_amount' => $checkoutAmount,
@@ -223,13 +382,31 @@ class PaymentController extends Controller
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'fulfillment' => 'required|in:delivery,pickup',
-                'full_name' => 'required|string',
-                'phone' => 'required|string',
+                'full_name' => 'required|string|max:255',
+                'phone' => 'required|string|max:50',
+
+                'state' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:255',
+                'address' => 'nullable|string|max:1000',
+
+                'pickup_state' => 'nullable|string|max:255',
+                'pickup_location' => 'nullable|string|max:255',
+
+                'pickup_location_id' => 'nullable|integer|exists:pickup_locations,id',
+                'delivery_location_id' => 'nullable|integer|exists:delivery_locations,id',
+                'delivery_type' => 'nullable|in:standard,express',
+
                 'bank_account_name' => 'required|string|max:255',
                 'bank_transaction_number' => 'required|string|max:255',
             ]);
 
             $user = auth()->user();
+
+            /*
+             * Resolve the delivery fee from the database.
+             * The frontend cannot submit its own delivery fee.
+             */
+            $deliveryDetails = $this->resolveDeliveryDetails($request);
 
             $productIds = collect($request->items)
                 ->pluck('product_id')
@@ -260,10 +437,21 @@ class PaymentController extends Controller
                     ], 422);
                 }
 
-                $originalPrice = (float) ($product->original_price ?? $product->price ?? 0);
+                $originalPrice = (float) (
+                    $product->original_price
+                    ?? $product->price
+                    ?? 0
+                );
+
                 $discountPercentage = min(
                     100,
-                    max(0, (float) ($product->discount_percentage ?? 0))
+                    max(
+                        0,
+                        (float) (
+                            $product->discount_percentage
+                            ?? 0
+                        )
+                    )
                 );
 
                 $price = round(
@@ -294,15 +482,25 @@ class PaymentController extends Controller
                 ], 422);
             }
 
-            $transactionFeePercentage = self::BANK_TRANSFER_FEE_PERCENTAGE;
+            $deliveryFee = $deliveryDetails['delivery_fee'];
+
+            $amountBeforeTransactionFee = round(
+                $subtotal + $deliveryFee,
+                2
+            );
+
+            $transactionFeePercentage =
+                self::BANK_TRANSFER_FEE_PERCENTAGE;
 
             $transactionFee = round(
-                $subtotal * ($transactionFeePercentage / 100),
+                $amountBeforeTransactionFee *
+                ($transactionFeePercentage / 100),
                 2
             );
 
             $total = round(
-                $subtotal + $transactionFee,
+                $amountBeforeTransactionFee +
+                $transactionFee,
                 2
             );
 
@@ -313,6 +511,8 @@ class PaymentController extends Controller
                 $request,
                 $items,
                 $subtotal,
+                $deliveryFee,
+                $deliveryDetails,
                 $transactionFee,
                 $transactionFeePercentage,
                 $total,
@@ -322,23 +522,45 @@ class PaymentController extends Controller
                     'user_id' => $user->id,
                     'order_number' => 'ORD-' . strtoupper(uniqid()),
                     'reference' => $reference,
+
                     'fulfillment' => $request->fulfillment,
+
                     'full_name' => $request->full_name,
                     'phone' => $request->phone,
+
                     'state' => $request->state,
                     'city' => $request->city,
                     'address' => $request->address,
+
                     'pickup_state' => $request->pickup_state,
                     'pickup_location' => $request->pickup_location,
+
+                    'pickup_location_id' =>
+                        $deliveryDetails['pickup_location_id'],
+
+                    'delivery_location_id' =>
+                        $deliveryDetails['delivery_location_id'],
+
+                    'delivery_type' =>
+                        $deliveryDetails['delivery_type'],
+
+                    'delivery_fee' => $deliveryFee,
+
                     'payment_method' => 'bank_transfer',
                     'payment_status' => 'pending',
                     'status' => 'pending',
+
                     'subtotal' => $subtotal,
                     'transaction_fee' => $transactionFee,
-                    'transaction_fee_percentage' => $transactionFeePercentage,
+                    'transaction_fee_percentage' =>
+                        $transactionFeePercentage,
                     'total' => $total,
-                    'bank_account_name' => trim($request->bank_account_name),
-                    'bank_transaction_number' => trim($request->bank_transaction_number),
+
+                    'bank_account_name' =>
+                        trim($request->bank_account_name),
+
+                    'bank_transaction_number' =>
+                        trim($request->bank_transaction_number),
                 ]);
 
                 foreach ($items as $item) {
@@ -360,10 +582,16 @@ class PaymentController extends Controller
                 'reference' => $reference,
                 'user_id' => $user->id,
                 'subtotal' => $subtotal,
+                'delivery_fee' => $deliveryFee,
+                'delivery_type' => $deliveryDetails['delivery_type'],
+                'pickup_location_id' =>
+                    $deliveryDetails['pickup_location_id'],
+                'delivery_location_id' =>
+                    $deliveryDetails['delivery_location_id'],
+                'amount_before_transaction_fee' =>
+                    round($subtotal + $deliveryFee, 2),
                 'transaction_fee' => $transactionFee,
                 'total' => $total,
-                'bank_account_name' => $request->bank_account_name,
-                'bank_transaction_number' => $request->bank_transaction_number,
             ]);
 
             return response()->json([
@@ -397,7 +625,9 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$order) {
-                    throw new \RuntimeException('Bank transfer order not found.');
+                    throw new \RuntimeException(
+                        'Bank transfer order not found.'
+                    );
                 }
 
                 if ($order->payment_status === 'paid') {
@@ -405,7 +635,9 @@ class PaymentController extends Controller
                 }
 
                 if ($order->payment_status !== 'pending') {
-                    throw new \RuntimeException('This bank transfer cannot be verified.');
+                    throw new \RuntimeException(
+                        'This bank transfer cannot be verified.'
+                    );
                 }
 
                 $orderItems = $order->items()
@@ -413,7 +645,9 @@ class PaymentController extends Controller
                     ->get();
 
                 if ($orderItems->isEmpty()) {
-                    throw new \RuntimeException('This order has no items.');
+                    throw new \RuntimeException(
+                        'This order has no items.'
+                    );
                 }
 
                 $productIds = $orderItems
@@ -445,8 +679,13 @@ class PaymentController extends Controller
                 }
 
                 foreach ($orderItems as $item) {
-                    Product::where('id', $item->product_id)
-                        ->decrement('stock', $item->quantity);
+                    Product::where(
+                        'id',
+                        $item->product_id
+                    )->decrement(
+                        'stock',
+                        $item->quantity
+                    );
                 }
 
                 $order->update([
@@ -464,7 +703,8 @@ class PaymentController extends Controller
                         'type' => 'payment',
                         'amount' => (float) $order->total,
                         'status' => 'completed',
-                        'description' => "Customer bank transfer payment for order {$order->order_number}",
+                        'description' =>
+                            "Customer bank transfer payment for order {$order->order_number}",
                     ]
                 );
 
@@ -489,7 +729,8 @@ class PaymentController extends Controller
                     $grossAmount = round($grossAmount, 2);
 
                     $commissionAmount = round(
-                        $grossAmount * ($commissionPercentage / 100),
+                        $grossAmount *
+                        ($commissionPercentage / 100),
                         2
                     );
 
@@ -513,7 +754,8 @@ class PaymentController extends Controller
 
                     WalletTransaction::firstOrCreate(
                         [
-                            'reference' => "EARN-{$order->id}-{$sellerId}",
+                            'reference' =>
+                                "EARN-{$order->id}-{$sellerId}",
                         ],
                         [
                             'order_id' => $order->id,
@@ -521,7 +763,8 @@ class PaymentController extends Controller
                             'type' => 'platform_earning',
                             'amount' => $commissionAmount,
                             'status' => 'completed',
-                            'description' => "AESTRA commission from order {$order->order_number}",
+                            'description' =>
+                                "AESTRA commission from order {$order->order_number}",
                         ]
                     );
                 }
@@ -536,11 +779,15 @@ class PaymentController extends Controller
                         'type' => 'platform_earning',
                         'amount' => (float) $order->transaction_fee,
                         'status' => 'completed',
-                        'description' => "AESTRA transaction fee from order {$order->order_number}",
+                        'description' =>
+                            "AESTRA transaction fee from order {$order->order_number}",
                     ]
                 );
 
-                Cart::where('user_id', $order->user_id)->delete();
+                Cart::where(
+                    'user_id',
+                    $order->user_id
+                )->delete();
 
                 return $order->load('items');
             });
@@ -553,7 +800,8 @@ class PaymentController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Bank transfer verified and order processed successfully.',
+                'message' =>
+                    'Bank transfer verified and order processed successfully.',
                 'order' => $order,
             ]);
         } catch (\Throwable $e) {
@@ -577,7 +825,8 @@ class PaymentController extends Controller
 
             if (!$reference) {
                 return redirect(
-                    env('FRONTEND_URL') . '/payment-failed?message=' .
+                    env('FRONTEND_URL') .
+                    '/payment-failed?message=' .
                     urlencode('Payment reference was missing.')
                 );
             }
@@ -586,7 +835,8 @@ class PaymentController extends Controller
 
             if (!($response['status'] ?? false)) {
                 return redirect(
-                    env('FRONTEND_URL') . '/payment-failed?message=' .
+                    env('FRONTEND_URL') .
+                    '/payment-failed?message=' .
                     urlencode('Payment could not be verified.')
                 );
             }
@@ -598,7 +848,8 @@ class PaymentController extends Controller
                 ($paymentData['status'] ?? null) !== 'success'
             ) {
                 return redirect(
-                    env('FRONTEND_URL') . '/payment-failed?message=' .
+                    env('FRONTEND_URL') .
+                    '/payment-failed?message=' .
                     urlencode('Payment was not successful.')
                 );
             }
@@ -610,8 +861,11 @@ class PaymentController extends Controller
 
             if (!$order) {
                 return redirect(
-                    env('FRONTEND_URL') . '/payment-failed?message=' .
-                    urlencode('Payment was received, but we could not finalize the order. Please contact support before making another payment.')
+                    env('FRONTEND_URL') .
+                    '/payment-failed?message=' .
+                    urlencode(
+                        'Payment was received, but we could not finalize the order. Please contact support before making another payment.'
+                    )
                 );
             }
 
@@ -628,8 +882,11 @@ class PaymentController extends Controller
             ]);
 
             return redirect(
-                env('FRONTEND_URL') . '/payment-failed?message=' .
-                urlencode('Payment was received, but order finalization failed. Please contact support before making another payment.')
+                env('FRONTEND_URL') .
+                '/payment-failed?message=' .
+                urlencode(
+                    'Payment was received, but order finalization failed. Please contact support before making another payment.'
+                )
             );
         }
     }
@@ -675,7 +932,8 @@ class PaymentController extends Controller
             if (!$order) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Payment was successful but the order could not be finalized. Please contact support before making another payment.',
+                    'message' =>
+                        'Payment was successful but the order could not be finalized. Please contact support before making another payment.',
                 ], 422);
             }
 
@@ -761,8 +1019,18 @@ class PaymentController extends Controller
         string $reference,
         array $paymentData
     ): ?Order {
-        return DB::transaction(function () use ($reference, $paymentData) {
-            $existingOrder = Order::where('reference', $reference)
+        return DB::transaction(function () use (
+            $reference,
+            $paymentData
+        ) {
+            /*
+             * Prevent duplicate order creation if Paystack callback,
+             * verification and webhook are all triggered.
+             */
+            $existingOrder = Order::where(
+                'reference',
+                $reference
+            )
                 ->lockForUpdate()
                 ->first();
 
@@ -779,7 +1047,10 @@ class PaymentController extends Controller
             $metadata = $paymentData['metadata'] ?? [];
 
             if (is_string($metadata)) {
-                $decodedMetadata = json_decode($metadata, true);
+                $decodedMetadata = json_decode(
+                    $metadata,
+                    true
+                );
 
                 if (json_last_error() === JSON_ERROR_NONE) {
                     $metadata = $decodedMetadata;
@@ -795,29 +1066,76 @@ class PaymentController extends Controller
                 return null;
             }
 
-            $userId = data_get($metadata, 'user_id');
-            $items = data_get($metadata, 'items', []);
+            $userId = data_get(
+                $metadata,
+                'user_id'
+            );
+
+            $items = data_get(
+                $metadata,
+                'items',
+                []
+            );
+
             $checkoutSubtotal = (float) data_get(
                 $metadata,
                 'checkout_subtotal',
                 0
             );
+
+            $deliveryFee = (float) data_get(
+                $metadata,
+                'delivery_fee',
+                0
+            );
+
+            $deliveryType = data_get(
+                $metadata,
+                'delivery_type'
+            );
+
+            $pickupLocationId = data_get(
+                $metadata,
+                'pickup_location_id'
+            );
+
+            $deliveryLocationId = data_get(
+                $metadata,
+                'delivery_location_id'
+            );
+
+            $amountBeforeTransactionFee = (float) data_get(
+                $metadata,
+                'amount_before_transaction_fee',
+                0
+            );
+
             $transactionFee = (float) data_get(
                 $metadata,
                 'transaction_fee',
                 0
             );
+
             $transactionFeePercentage = (float) data_get(
                 $metadata,
                 'transaction_fee_percentage',
                 self::PAYSTACK_FEE_PERCENTAGE
             );
+
             $checkoutAmount = (float) data_get(
                 $metadata,
                 'checkout_amount',
                 0
             );
 
+            $fulfillment = data_get(
+                $metadata,
+                'fulfillment'
+            );
+
+            /*
+             * Basic metadata validation.
+             */
             if (
                 !$userId ||
                 !is_array($items) ||
@@ -825,14 +1143,109 @@ class PaymentController extends Controller
                 $checkoutSubtotal <= 0 ||
                 $checkoutAmount <= 0
             ) {
-                Log::error('PAYSTACK PAYMENT MISSING METADATA', [
-                    'reference' => $reference,
-                    'metadata' => $metadata,
-                ]);
+                Log::error(
+                    'PAYSTACK PAYMENT MISSING METADATA',
+                    [
+                        'reference' => $reference,
+                        'metadata' => $metadata,
+                    ]
+                );
 
                 return null;
             }
 
+            /*
+             * Delivery orders must contain valid delivery information.
+             *
+             * Pickup orders must not contain a delivery charge.
+             */
+            if ($fulfillment === 'delivery') {
+                if (
+                    !$pickupLocationId ||
+                    !$deliveryLocationId ||
+                    !$deliveryType
+                ) {
+                    Log::warning(
+                        'PAYSTACK DELIVERY METADATA MISSING',
+                        [
+                            'reference' => $reference,
+                        ]
+                    );
+
+                    return null;
+                }
+
+                if ($deliveryFee < 0) {
+                    Log::warning(
+                        'PAYSTACK INVALID DELIVERY FEE',
+                        [
+                            'reference' => $reference,
+                            'delivery_fee' => $deliveryFee,
+                        ]
+                    );
+
+                    return null;
+                }
+
+                /*
+                 * Make sure the locations existed and were active when
+                 * the payment snapshot was created.
+                 *
+                 * We use the metadata snapshot for the final order because
+                 * an admin may legitimately change a delivery rate after
+                 * the customer has already started/paid for checkout.
+                 */
+                $pickupLocation = PickupLocation::where(
+                    'id',
+                    $pickupLocationId
+                )->first();
+
+                $deliveryLocation = DeliveryLocation::where(
+                    'id',
+                    $deliveryLocationId
+                )->first();
+
+                if (!$pickupLocation || !$deliveryLocation) {
+                    Log::warning(
+                        'PAYSTACK DELIVERY LOCATION NOT FOUND',
+                        [
+                            'reference' => $reference,
+                            'pickup_location_id' =>
+                                $pickupLocationId,
+                            'delivery_location_id' =>
+                                $deliveryLocationId,
+                        ]
+                    );
+
+                    return null;
+                }
+
+                if (
+                    $amountBeforeTransactionFee <=
+                    0
+                ) {
+                    Log::warning(
+                        'PAYSTACK DELIVERY AMOUNT INVALID',
+                        [
+                            'reference' => $reference,
+                        ]
+                    );
+
+                    return null;
+                }
+            } else {
+                $deliveryFee = 0;
+                $deliveryType = null;
+                $pickupLocationId = null;
+                $deliveryLocationId = null;
+
+                $amountBeforeTransactionFee =
+                    $checkoutSubtotal;
+            }
+
+            /*
+             * Paystack returns amounts in kobo.
+             */
             $requestedAmount = round(
                 ((float) (
                     $paymentData['requested_amount']
@@ -843,32 +1256,57 @@ class PaymentController extends Controller
             );
 
             $customerPaidAmount = round(
-                ((float) ($paymentData['amount'] ?? 0)) / 100,
+                ((float) (
+                    $paymentData['amount']
+                    ?? 0
+                )) / 100,
                 2
             );
 
-            if (abs($requestedAmount - $checkoutAmount) > 0.01) {
-                Log::warning('PAYSTACK CHECKOUT AMOUNT MISMATCH', [
-                    'reference' => $reference,
-                    'requested_amount' => $requestedAmount,
-                    'customer_paid_amount' => $customerPaidAmount,
-                    'checkout_amount' => $checkoutAmount,
-                    'paystack_fee' => round(
-                        $customerPaidAmount - $requestedAmount,
-                        2
-                    ),
-                ]);
+            /*
+             * The amount Paystack was instructed to charge must match
+             * the amount stored in the verified Paystack metadata.
+             */
+            if (
+                abs(
+                    $requestedAmount -
+                    $checkoutAmount
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK CHECKOUT AMOUNT MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'requested_amount' =>
+                            $requestedAmount,
+                        'customer_paid_amount' =>
+                            $customerPaidAmount,
+                        'checkout_amount' =>
+                            $checkoutAmount,
+                        'paystack_fee' => round(
+                            $customerPaidAmount -
+                            $requestedAmount,
+                            2
+                        ),
+                    ]
+                );
 
                 return null;
             }
 
+            /*
+             * Recalculate the product subtotal from the payment snapshot.
+             */
             $productIds = collect($items)
                 ->pluck('product_id')
                 ->unique()
                 ->sort()
                 ->values();
 
-            $products = Product::whereIn('id', $productIds)
+            $products = Product::whereIn(
+                'id',
+                $productIds
+            )
                 ->where('status', true)
                 ->orderBy('id')
                 ->lockForUpdate()
@@ -879,36 +1317,65 @@ class PaymentController extends Controller
             $orderItems = [];
 
             foreach ($items as $item) {
-                $productId = (int) data_get($item, 'product_id');
-                $quantity = (int) data_get($item, 'quantity');
-                $price = (float) data_get($item, 'unit_price', 0);
+                $productId = (int) data_get(
+                    $item,
+                    'product_id'
+                );
 
-                $product = $products->get($productId);
+                $quantity = (int) data_get(
+                    $item,
+                    'quantity'
+                );
 
-                if (!$product || $quantity < 1 || $price < 0) {
-                    Log::warning('PAYSTACK ORDER PRODUCT INVALID', [
-                        'reference' => $reference,
-                        'product_id' => $productId,
-                        'quantity' => $quantity,
-                        'price' => $price,
-                    ]);
+                $price = (float) data_get(
+                    $item,
+                    'unit_price',
+                    0
+                );
+
+                $product = $products->get(
+                    $productId
+                );
+
+                if (
+                    !$product ||
+                    $quantity < 1 ||
+                    $price < 0
+                ) {
+                    Log::warning(
+                        'PAYSTACK ORDER PRODUCT INVALID',
+                        [
+                            'reference' => $reference,
+                            'product_id' => $productId,
+                            'quantity' => $quantity,
+                            'price' => $price,
+                        ]
+                    );
 
                     return null;
                 }
 
                 if ($product->stock < $quantity) {
-                    Log::warning('PAYSTACK ORDER STOCK UNAVAILABLE', [
-                        'reference' => $reference,
-                        'product_id' => $product->id,
-                        'stock' => $product->stock,
-                        'requested' => $quantity,
-                    ]);
+                    Log::warning(
+                        'PAYSTACK ORDER STOCK UNAVAILABLE',
+                        [
+                            'reference' => $reference,
+                            'product_id' => $product->id,
+                            'stock' => $product->stock,
+                            'requested' => $quantity,
+                        ]
+                    );
 
                     return null;
                 }
 
                 $price = round($price, 2);
-                $lineTotal = round($price * $quantity, 2);
+
+                $lineTotal = round(
+                    $price * $quantity,
+                    2
+                );
+
                 $subtotal += $lineTotal;
 
                 $orderItems[] = [
@@ -921,77 +1388,239 @@ class PaymentController extends Controller
 
             $subtotal = round($subtotal, 2);
 
-            if (abs($subtotal - $checkoutSubtotal) > 0.01) {
-                Log::warning('PAYSTACK SNAPSHOT SUBTOTAL MISMATCH', [
-                    'reference' => $reference,
-                    'checkout_subtotal' => $checkoutSubtotal,
-                    'calculated_subtotal' => $subtotal,
-                ]);
+            /*
+             * Verify that the Paystack metadata subtotal matches
+             * the actual product prices.
+             */
+            if (
+                abs(
+                    $subtotal -
+                    $checkoutSubtotal
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK SNAPSHOT SUBTOTAL MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'checkout_subtotal' =>
+                            $checkoutSubtotal,
+                        'calculated_subtotal' =>
+                            $subtotal,
+                    ]
+                );
 
                 return null;
             }
 
+            /*
+             * Recalculate subtotal + delivery fee.
+             */
+            $calculatedAmountBeforeTransactionFee =
+                round(
+                    $subtotal +
+                    $deliveryFee,
+                    2
+                );
+
+            if (
+                abs(
+                    $calculatedAmountBeforeTransactionFee -
+                    $amountBeforeTransactionFee
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK AMOUNT BEFORE FEE MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'metadata_amount' =>
+                            $amountBeforeTransactionFee,
+                        'calculated_amount' =>
+                            $calculatedAmountBeforeTransactionFee,
+                        'delivery_fee' =>
+                            $deliveryFee,
+                    ]
+                );
+
+                return null;
+            }
+
+            /*
+             * Recalculate the transaction fee using the same percentage
+             * that was stored in the Paystack snapshot.
+             */
             $calculatedTransactionFee = round(
-                $subtotal * ($transactionFeePercentage / 100),
+                $calculatedAmountBeforeTransactionFee *
+                ($transactionFeePercentage / 100),
                 2
             );
 
-            if (abs($calculatedTransactionFee - $transactionFee) > 0.01) {
-                Log::warning('PAYSTACK TRANSACTION FEE MISMATCH', [
-                    'reference' => $reference,
-                    'metadata_fee' => $transactionFee,
-                    'calculated_fee' => $calculatedTransactionFee,
-                ]);
+            if (
+                abs(
+                    $calculatedTransactionFee -
+                    $transactionFee
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK TRANSACTION FEE MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'metadata_fee' =>
+                            $transactionFee,
+                        'calculated_fee' =>
+                            $calculatedTransactionFee,
+                    ]
+                );
 
                 return null;
             }
 
+            /*
+             * Recalculate the final checkout total.
+             */
             $calculatedCheckoutAmount = round(
-                $subtotal + $transactionFee,
+                $calculatedAmountBeforeTransactionFee +
+                $calculatedTransactionFee,
                 2
             );
 
-            if (abs($calculatedCheckoutAmount - $checkoutAmount) > 0.01) {
-                Log::warning('PAYSTACK CHECKOUT TOTAL MISMATCH', [
-                    'reference' => $reference,
-                    'checkout_amount' => $checkoutAmount,
-                    'calculated_total' => $calculatedCheckoutAmount,
-                ]);
+            if (
+                abs(
+                    $calculatedCheckoutAmount -
+                    $checkoutAmount
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK CHECKOUT TOTAL MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'checkout_amount' =>
+                            $checkoutAmount,
+                        'calculated_total' =>
+                            $calculatedCheckoutAmount,
+                    ]
+                );
 
                 return null;
             }
 
-            if (abs($requestedAmount - $calculatedCheckoutAmount) > 0.01) {
-                Log::warning('PAYSTACK REQUESTED TOTAL MISMATCH', [
-                    'reference' => $reference,
-                    'requested_amount' => $requestedAmount,
-                    'calculated_total' => $calculatedCheckoutAmount,
-                ]);
+            /*
+             * Final comparison against the amount Paystack was instructed
+             * to charge.
+             */
+            if (
+                abs(
+                    $requestedAmount -
+                    $calculatedCheckoutAmount
+                ) > 0.01
+            ) {
+                Log::warning(
+                    'PAYSTACK REQUESTED TOTAL MISMATCH',
+                    [
+                        'reference' => $reference,
+                        'requested_amount' =>
+                            $requestedAmount,
+                        'calculated_total' =>
+                            $calculatedCheckoutAmount,
+                    ]
+                );
 
                 return null;
             }
 
+            /*
+             * Create the order only after all payment and amount checks
+             * have passed.
+             */
             $order = Order::create([
                 'user_id' => $userId,
-                'order_number' => 'ORD-' . strtoupper(uniqid()),
+
+                'order_number' =>
+                    'ORD-' . strtoupper(uniqid()),
+
                 'reference' => $reference,
-                'fulfillment' => data_get($metadata, 'fulfillment'),
-                'full_name' => data_get($metadata, 'full_name'),
-                'phone' => data_get($metadata, 'phone'),
-                'state' => data_get($metadata, 'state'),
-                'city' => data_get($metadata, 'city'),
-                'address' => data_get($metadata, 'address'),
-                'pickup_state' => data_get($metadata, 'pickup_state'),
-                'pickup_location' => data_get($metadata, 'pickup_location'),
-                'payment_method' => 'paystack',
-                'payment_status' => 'paid',
-                'status' => 'processing',
-                'subtotal' => $subtotal,
-                'transaction_fee' => $transactionFee,
-                'transaction_fee_percentage' => $transactionFeePercentage,
-                'total' => $checkoutAmount,
+
+                'fulfillment' =>
+                    $fulfillment,
+
+                'full_name' =>
+                    data_get(
+                        $metadata,
+                        'full_name'
+                    ),
+
+                'phone' =>
+                    data_get(
+                        $metadata,
+                        'phone'
+                    ),
+
+                'state' =>
+                    data_get(
+                        $metadata,
+                        'state'
+                    ),
+
+                'city' =>
+                    data_get(
+                        $metadata,
+                        'city'
+                    ),
+
+                'address' =>
+                    data_get(
+                        $metadata,
+                        'address'
+                    ),
+
+                'pickup_state' =>
+                    data_get(
+                        $metadata,
+                        'pickup_state'
+                    ),
+
+                'pickup_location' =>
+                    data_get(
+                        $metadata,
+                        'pickup_location'
+                    ),
+
+                'pickup_location_id' =>
+                    $pickupLocationId,
+
+                'delivery_location_id' =>
+                    $deliveryLocationId,
+
+                'delivery_type' =>
+                    $deliveryType,
+
+                'delivery_fee' =>
+                    $deliveryFee,
+
+                'payment_method' =>
+                    'paystack',
+
+                'payment_status' =>
+                    'paid',
+
+                'status' =>
+                    'processing',
+
+                'subtotal' =>
+                    $subtotal,
+
+                'transaction_fee' =>
+                    $transactionFee,
+
+                'transaction_fee_percentage' =>
+                    $transactionFeePercentage,
+
+                'total' =>
+                    $checkoutAmount,
             ]);
 
+            /*
+             * Create order items and reduce stock.
+             */
             foreach ($orderItems as $item) {
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -1001,34 +1630,56 @@ class PaymentController extends Controller
                     'price' => $item['price'],
                 ]);
 
-                Product::where('id', $item['product_id'])
-                    ->decrement('stock', $item['quantity']);
+                Product::where(
+                    'id',
+                    $item['product_id']
+                )->decrement(
+                    'stock',
+                    $item['quantity']
+                );
             }
 
+            /*
+             * Record the customer's payment.
+             */
             WalletTransaction::firstOrCreate(
-                ['reference' => $reference],
+                [
+                    'reference' => $reference,
+                ],
                 [
                     'order_id' => $order->id,
                     'seller_id' => null,
                     'type' => 'payment',
                     'amount' => $requestedAmount,
                     'status' => 'completed',
-                    'description' => "Customer payment for order {$order->order_number}",
+                    'description' =>
+                        "Customer payment for order {$order->order_number}",
                 ]
             );
 
+            /*
+             * Record AESTRA's transaction fee.
+             */
             WalletTransaction::firstOrCreate(
-                ['reference' => "FEE-{$order->id}"],
+                [
+                    'reference' =>
+                        "FEE-{$order->id}",
+                ],
                 [
                     'order_id' => $order->id,
                     'seller_id' => null,
                     'type' => 'platform_earning',
                     'amount' => $transactionFee,
                     'status' => 'completed',
-                    'description' => "AESTRA transaction fee from order {$order->order_number}",
+                    'description' =>
+                        "AESTRA transaction fee from order {$order->order_number}",
                 ]
             );
 
+            /*
+             * Calculate seller commission/payouts using product value only.
+             * Delivery and transaction fees are not seller revenue.
+             */
             $commissionPercentage = (float) (
                 WalletSetting::first()?->commission_percentage ?? 5
             );
@@ -1036,10 +1687,12 @@ class PaymentController extends Controller
             $sellerTotals = collect($orderItems)
                 ->groupBy('seller_id')
                 ->map(function ($items) {
-                    return collect($items)->sum(function ($item) {
-                        return (float) $item['price'] *
-                            (int) $item['quantity'];
-                    });
+                    return collect($items)->sum(
+                        function ($item) {
+                            return (float) $item['price'] *
+                                (int) $item['quantity'];
+                        }
+                    );
                 });
 
             foreach ($sellerTotals as $sellerId => $grossAmount) {
@@ -1047,15 +1700,20 @@ class PaymentController extends Controller
                     continue;
                 }
 
-                $grossAmount = round($grossAmount, 2);
+                $grossAmount = round(
+                    $grossAmount,
+                    2
+                );
 
                 $commissionAmount = round(
-                    $grossAmount * ($commissionPercentage / 100),
+                    $grossAmount *
+                    ($commissionPercentage / 100),
                     2
                 );
 
                 $payoutAmount = round(
-                    $grossAmount - $commissionAmount,
+                    $grossAmount -
+                    $commissionAmount,
                     2
                 );
 
@@ -1065,41 +1723,93 @@ class PaymentController extends Controller
                         'order_id' => $order->id,
                     ],
                     [
-                        'gross_amount' => $grossAmount,
-                        'commission_amount' => $commissionAmount,
-                        'payout_amount' => $payoutAmount,
-                        'status' => 'pending',
+                        'gross_amount' =>
+                            $grossAmount,
+
+                        'commission_amount' =>
+                            $commissionAmount,
+
+                        'payout_amount' =>
+                            $payoutAmount,
+
+                        'status' =>
+                            'pending',
                     ]
                 );
 
                 WalletTransaction::firstOrCreate(
                     [
-                        'reference' => "EARN-{$order->id}-{$sellerId}",
+                        'reference' =>
+                            "EARN-{$order->id}-{$sellerId}",
                     ],
                     [
-                        'order_id' => $order->id,
-                        'seller_id' => $sellerId,
-                        'type' => 'platform_earning',
-                        'amount' => $commissionAmount,
-                        'status' => 'completed',
-                        'description' => "AESTRA commission from order {$order->order_number}",
+                        'order_id' =>
+                            $order->id,
+
+                        'seller_id' =>
+                            $sellerId,
+
+                        'type' =>
+                            'platform_earning',
+
+                        'amount' =>
+                            $commissionAmount,
+
+                        'status' =>
+                            'completed',
+
+                        'description' =>
+                            "AESTRA commission from order {$order->order_number}",
                     ]
                 );
             }
 
-            Cart::where('user_id', $userId)->delete();
+            /*
+             * Clear the customer's cart only after the order has been
+             * successfully finalized.
+             */
+            Cart::where(
+                'user_id',
+                $userId
+            )->delete();
 
-            Log::info('PAYSTACK ORDER FINALIZED SUCCESSFULLY', [
-                'reference' => $reference,
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'user_id' => $userId,
-                'requested_amount' => $requestedAmount,
-                'customer_paid_amount' => $customerPaidAmount,
-                'transaction_fee' => $transactionFee,
-            ]);
+            Log::info(
+                'PAYSTACK ORDER FINALIZED SUCCESSFULLY',
+                [
+                    'reference' =>
+                        $reference,
+
+                    'order_id' =>
+                        $order->id,
+
+                    'order_number' =>
+                        $order->order_number,
+
+                    'user_id' =>
+                        $userId,
+
+                    'requested_amount' =>
+                        $requestedAmount,
+
+                    'customer_paid_amount' =>
+                        $customerPaidAmount,
+
+                    'subtotal' =>
+                        $subtotal,
+
+                    'delivery_fee' =>
+                        $deliveryFee,
+
+                    'transaction_fee' =>
+                        $transactionFee,
+
+                    'total' =>
+                        $checkoutAmount,
+                ]
+            );
 
             return $order->load('items');
         });
     }
 }
+

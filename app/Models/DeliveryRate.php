@@ -29,4 +29,3 @@ class DeliveryRate extends Model
         return $this->belongsTo(DeliveryLocation::class);
     }
 }
-

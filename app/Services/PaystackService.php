@@ -57,3 +57,4 @@ class PaystackService
         return $response->json();
     }
 }
+

@@ -18,6 +18,12 @@ class Order extends Model
         'address',
         'pickup_state',
         'pickup_location',
+        'pickup_location_id',
+        'delivery_state',
+        'delivery_location',
+        'delivery_location_id',
+        'delivery_type',
+        'delivery_fee',
         'payment_method',
         'payment_status',
         'status',
@@ -31,9 +37,12 @@ class Order extends Model
 
     protected $casts = [
         'subtotal' => 'decimal:2',
+        'delivery_fee' => 'decimal:2',
         'transaction_fee' => 'decimal:2',
         'transaction_fee_percentage' => 'decimal:2',
         'total' => 'decimal:2',
+        'pickup_location_id' => 'integer',
+        'delivery_location_id' => 'integer',
     ];
 
     public function items()
@@ -44,6 +53,16 @@ class Order extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function pickupLocation()
+    {
+        return $this->belongsTo(PickupLocation::class);
+    }
+
+    public function deliveryLocation()
+    {
+        return $this->belongsTo(DeliveryLocation::class);
     }
 
     public function walletTransactions()
